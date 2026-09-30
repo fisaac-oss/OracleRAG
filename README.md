@@ -30,7 +30,7 @@ The project is a rules arbiter for TTRPG players and Game Masters. The core valu
 
 ## Architecture
 
-Below is the initial starter architecture. As the project evolves with additional capabilities, the updated diagram will be found at docs/architecture.md.
+Below is the initial starter architecture. As the project evolves with additional capabilities, the updated diagram will be found at [`docs/architecture.md`](docs/architecture.md).
 
 ```text
 User
@@ -45,7 +45,7 @@ Model Client (src/models/model_client.py)
   ↓
 Ollama (Local LLM Server) - qwen3.5:4b
 ```
-> **Core Architectural Rule:** The user interface must NEVER communicate directly with the model client or Ollama. All interactions must pass through the service layer (`ai_service.py`).
+> **Core Architectural Rule:** The user interface NEVER communicate directly with the model client or Ollama. All interactions pass through the service layer (`ai_service.py`).
 
 ## Model
 
