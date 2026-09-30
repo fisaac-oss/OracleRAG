@@ -26,11 +26,11 @@ The project is a rules arbiter for TTRPG players and Game Masters. The core valu
 
 1. **User Input:** The user uploads the rulebook and submits a query via a Streamlit user interface.
 2. **Processing & Guardrails:** The application service layer (`src/services/ai_service.py`) validates and formats the request. LangChain and ChromaDB identify the relevant context based on similarity search.
-3. **Model Response:** The model client calls the `qwen3.5:4b` model via the local Ollama server and returns the formatted response back through the service layer to the UI. This flow strictly adheres to the core architectural rule: the UI must NEVER communicate directly with the model client or Ollama.
+3. **Model Response:** The model client calls the `qwen3.5:4b` model via the local Ollama server and returns the formatted response back through the service layer to the UI.
 
 ## Architecture
 
-Below is the updated architecture diagram reflecting the new capabilities.
+Below is the initial starter architecture. As the project evolves with additional capabilities, the updated diagram will be found at docs/architecture.md.
 
 ```text
 User
@@ -45,6 +45,7 @@ Model Client (src/models/model_client.py)
   ↓
 Ollama (Local LLM Server) - qwen3.5:4b
 ```
+> **Core Architectural Rule:** The user interface must NEVER communicate directly with the model client or Ollama. All interactions must pass through the service layer (`ai_service.py`).
 
 ## Model
 
