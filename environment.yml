@@ -1,4 +1,4 @@
-name: dev-ai-project
+name: oracle-rag
 
 channels:
   - conda-forge
