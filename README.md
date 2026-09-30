@@ -9,14 +9,14 @@
 ## Problem
 
 ### Intended users
-* The primary target users for this application are players and Game Masters of Tabletop Role-Playing Games (TTRPG).
+- The primary target users for this application are players and Game Masters of Tabletop Role-Playing Games (TTRPG).
 
 ### Problem statement
-* Players and Game Masters need to be able to answer questions regarding game rules quickly during a session.
-* The application solves this problem by allowing users to upload their own rulebooks and extract accurate answers from them.
+- Players and Game Masters need to be able to answer questions regarding game rules quickly during a session.
+- The application solves this problem by allowing users to upload their own rulebooks and extract accurate answers from them.
 
 ### Why AI is appropriate
-* Traditional deterministic solutions rely on literal keyword searches, whereas TTRPG rules require natural language understanding to parse complex context and intent. AI (specifically through RAG) perfectly fills the need to both find the rule and interpret it to provide a direct answer to the user's question.
+- Traditional deterministic solutions rely on literal keyword searches, whereas TTRPG rules require natural language understanding to parse complex context and intent. AI (specifically through RAG) perfectly fills the need to both find the rule and interpret it to provide a direct answer to the user's question.
 
 ## Solution
 
@@ -48,25 +48,25 @@ Ollama (Local LLM Server) - qwen3.5:4b
 
 ## Model
 
-* **Model used:** `qwen3.5:4b` (running locally via Ollama).
-* **Selection rationale:** This model was chosen because it is lightweight and performs efficiently on local hardware.
+- **Model used:** `qwen3.5:4b` (running locally via Ollama).
+- **Selection rationale:** This model was chosen because it is lightweight and performs efficiently on local hardware.
 
 ## Additional AI capability
 
 Select at least one additional capability to implement for your final project:
 
-* [x] RAG (Retrieval-Augmented Generation)
-* [ ] Tools / External API integration
-* [ ] Model Context Protocol (MCP)
-* [ ] Agentic workflow (Model-selected actions based on observations)
-* [x] Memory / Persistent state
-* [ ] Multimodal interaction (Text + Images)
-* [ ] Other: ______________________
+- [x] RAG (Retrieval-Augmented Generation)
+- [ ] Tools / External API integration
+- [ ] Model Context Protocol (MCP)
+- [ ] Agentic workflow (Model-selected actions based on observations)
+- [x] Memory / Persistent state
+- [ ] Multimodal interaction (Text + Images)
+- [ ] Other: ______________________
 
 ### Capability justification
 
-* The implementation of **RAG** is the core mechanism of the tool, allowing the application to ingest and perform similarity searches within the original rulebooks uploaded by the users.
-* The addition of **Memory / Persistent state** provides conversational functionality, allowing players to ask follow-up or clarifying questions without needing to repeat the full context.
+- The implementation of **RAG** is the core mechanism of the tool, allowing the application to ingest and perform similarity searches within the original rulebooks uploaded by the users.
+- The addition of **Memory / Persistent state** provides conversational functionality, allowing players to ask follow-up or clarifying questions without needing to repeat the full context.
 
 ## Setup
 
@@ -134,7 +134,8 @@ Refer to [`evaluation/README.md`](evaluation/README.md) for guidelines on defini
 
 ## Known limitations
 
-- Highlight known system limitations, unhandled edge cases, or boundaries of current capabilities.
+- **Memory Restraints:** Conversational memory will be strictly limited to the last few interactions. While this limits the ability to recall events from early in the session, it is intentional to avoid polluting the prompt context and degrading model performance.
+- **Fallback Mechanism:** The model will not attempt to guess or extrapolate rules. If the similarity search returns a low confidence score, or if the model cannot find the answer in the retrieved text, the system will output a direct refusal message rather than guessing.
 
 ## Future improvements
 
