@@ -13,3 +13,4 @@ class AIResponse(BaseModel):
     content: str = Field(..., description="The generated response text or user-friendly error message.")
     success: bool = Field(True, description="Flag indicating if the operation succeeded.")
     error_message: str | None = Field(None, description="Detailed error description if success is False.")
+    model: str | None  = Field(None, description="Model used to provide the answer or None if no model was used.")

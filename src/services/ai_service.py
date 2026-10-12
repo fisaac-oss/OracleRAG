@@ -6,6 +6,7 @@ from src.models.model_client import (
     ModelNotFoundError,
 )
 from src.schemas.responses import UserRequest, AIResponse
+import ollama
 
 
 class AIService:
@@ -48,6 +49,7 @@ class AIService:
             return AIResponse(
                 content=response_text,
                 success=True,
+                model=client.model_name,
             )
 
         except OllamaConnectionError as err:
@@ -88,10 +90,17 @@ class AIService:
 def generate_response(user_message: str, service: Optional[AIService] = None) -> str:
     """
     Main reusable service entry point used by the UI layer.
-    
+
     Accepts user input message, passes it to the AI service, and returns
     the generated text response (or a friendly error message).
     """
     active_service = service or AIService()
     response = active_service.process_message(user_message)
-    return response.content
+    return response
+
+
+def get_models_list():
+    models_info = ollama.list()
+    models_name = [model.model for model in models_info.models]
+
+    return models_name
