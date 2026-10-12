@@ -1,4 +1,4 @@
-name: oracle-rag
+name: oracle_rag
 
 channels:
   - conda-forge
@@ -12,3 +12,5 @@ dependencies:
       - pydantic
       - python-dotenv
       - pytest
+      - docling
+      - streamlit
