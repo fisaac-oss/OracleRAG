@@ -97,10 +97,3 @@ def generate_response(user_message: str, service: Optional[AIService] = None) ->
     active_service = service or AIService()
     response = active_service.process_message(user_message)
     return response
-
-
-def get_models_list():
-    models_info = ollama.list()
-    models_name = [model.model for model in models_info.models]
-
-    return models_name
