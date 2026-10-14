@@ -1,29 +1,75 @@
-from typing import Optional
+from typing import Optional, BinaryIO
 from src.models.model_client import (
     OllamaModelClient,
     ModelClientError,
     OllamaConnectionError,
     ModelNotFoundError,
 )
-from src.schemas.responses import UserRequest, AIResponse
-import ollama
+from src.schemas.responses import (
+    UserRequest,
+    AIResponse,
+    IngestionResponse,
+    RuleCitation,
+)
+from src.capabilities.rag import get_rag_pipeline, RAGPipeline
 
 
 class AIService:
     """
     Application service layer responsible for validating user input,
-    orchestrating model client requests, and catching exceptions gracefully.
+    orchestrating model client requests, managing RAG document ingestion,
+    and catching exceptions gracefully.
     """
 
-    def __init__(self, model_client: Optional[OllamaModelClient] = None):
-        # Allow injecting custom/mock model_client for simple testing
+    def __init__(
+        self,
+        model_client: Optional[OllamaModelClient] = None,
+        rag: Optional[RAGPipeline] = None,
+    ):
+        # Allow injecting custom/mock model_client and rag for simple testing
         self.model_client = model_client
+        self.rag = rag
 
     def _get_client(self) -> OllamaModelClient:
         """Returns active model client, initializing default client if none provided."""
         if self.model_client is None:
             self.model_client = OllamaModelClient()
         return self.model_client
+
+    def _get_rag(self) -> RAGPipeline:
+        """Returns active RAG pipeline, initializing default pipeline if none provided."""
+        if self.rag is None:
+            self.rag = get_rag_pipeline()
+        return self.rag
+
+    def ingest_rulebook(
+        self, file_source: str | bytes | BinaryIO, filename: str
+    ) -> IngestionResponse:
+        """
+        Ingests and indexes an uploaded rulebook into the RAG vector store.
+        """
+        try:
+            rag = self._get_rag()
+            count = rag.ingest_document(file_source, filename)
+            return IngestionResponse(
+                filename=filename,
+                chunks_count=count,
+                success=True,
+            )
+        except Exception as err:
+            return IngestionResponse(
+                filename=filename,
+                chunks_count=0,
+                success=False,
+                error_message=str(err),
+            )
+
+    def get_indexed_tomes(self) -> list[str]:
+        """Returns the list of currently indexed rulebooks."""
+        try:
+            return self._get_rag().get_indexed_tomes()
+        except Exception:
+            return []
 
     def process_message(self, user_message: str) -> AIResponse:
         """
@@ -42,14 +88,58 @@ class AIService:
             # 2. Schema validation
             request = UserRequest(message=user_message.strip())
 
-            # 3. Call model client
+            # 3. Retrieve relevant rulebook excerpts via RAG
+            rag = self._get_rag()
+            citations: list[RuleCitation] = rag.retrieve_relevant_rules(request.message)
+
+            indexed_tomes = rag.get_indexed_tomes()
+
+            # 5. Call model client
             client = self._get_client()
-            response_text = client.generate(request.message)
+            model_name = (
+                client.model_name
+                if isinstance(getattr(client, "model_name", None), str)
+                else "oracle_model"
+            )
+
+            # Fallback Guardrail: If tomes are uploaded, but no rules matched the threshold
+            if indexed_tomes and not citations:
+                return AIResponse(
+                    content=(
+                        "📜 *The consulted scriptures contain no decrees regarding this matter.*\n\n"
+                        "The Oracle cannot divine an answer based on your currently indexed tomes."
+                    ),
+                    success=True,
+                    model=model_name,
+                    citations=[],
+                )
+
+            # 4. Construct grounded prompt if rulebook excerpts were found
+            if citations:
+                context_blocks = "\n\n".join(
+                    f"[Tome: {c.source} | Section: {c.section} | Page: {c.page or 'N/A'}]\n{c.text}"
+                    for c in citations
+                )
+                prompt_to_model = (
+                    "You are an impartial, authoritative Tabletop RPG Rules Arbiter (The Oracle).\n"
+                    "Answer the player's question using ONLY the provided rule excerpts below.\n"
+                    "Do not guess, speculate, or invent rules not explicitly stated.\n"
+                    "Cite the rulebook name, section, and page number in your final verdict.\n\n"
+                    f"--- SACRED RULE EXCERPTS ---\n{context_blocks}\n\n"
+                    f"--- TRAVELER'S INQUIRY ---\n{request.message}\n\n"
+                    "--- ARBITER'S VERDICT ---"
+                )
+            else:
+                # If no tomes are indexed yet, invoke base model
+                prompt_to_model = request.message
+
+            response_text = client.generate(prompt_to_model)
 
             return AIResponse(
                 content=response_text,
                 success=True,
-                model=client.model_name,
+                model=model_name,
+                citations=citations,
             )
 
         except OllamaConnectionError as err:
@@ -87,13 +177,34 @@ class AIService:
             )
 
 
-def generate_response(user_message: str, service: Optional[AIService] = None) -> str:
+def generate_response(
+    user_message: str, service: Optional[AIService] = None
+) -> AIResponse:
     """
     Main reusable service entry point used by the UI layer.
 
     Accepts user input message, passes it to the AI service, and returns
-    the generated text response (or a friendly error message).
+    the generated AIResponse (with content, model, and citations).
     """
     active_service = service or AIService()
-    response = active_service.process_message(user_message)
-    return response
+    return active_service.process_message(user_message)
+
+
+def ingest_rulebook_file(
+    file_source: str | bytes | BinaryIO,
+    filename: str,
+    service: Optional[AIService] = None,
+) -> IngestionResponse:
+    """
+    Service entry point for ingesting rulebook files from the UI layer.
+    """
+    active_service = service or AIService()
+    return active_service.ingest_rulebook(file_source, filename)
+
+
+def get_active_tomes(service: Optional[AIService] = None) -> list[str]:
+    """
+    Service entry point for fetching indexed rulebooks.
+    """
+    active_service = service or AIService()
+    return active_service.get_indexed_tomes()

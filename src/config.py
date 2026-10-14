@@ -15,6 +15,14 @@ class Config:
     model_name: str = os.getenv("MODEL_NAME", "qwen3.5:4b")
     model_temperature: float = float(os.getenv("MODEL_TEMPERATURE", "0.7"))
 
+    # RAG settings
+    chroma_db_dir: str = os.getenv(
+        "CHROMA_DB_DIR",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "chroma")),
+    )
+    rag_collection_name: str = os.getenv("RAG_COLLECTION_NAME", "oracle_rules")
+    similarity_threshold: float = float(os.getenv("SIMILARITY_THRESHOLD", "1.2"))
+
 
 # Instantiate global configuration object
 config = Config()

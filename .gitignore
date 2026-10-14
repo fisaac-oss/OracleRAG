@@ -21,3 +21,6 @@ ENV/
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# Vector database persistence
+data/chroma/

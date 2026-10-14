@@ -8,9 +8,9 @@ dependencies:
   - pip
   - pip:
       - ollama
-      - gradio
       - pydantic
       - python-dotenv
       - pytest
       - docling
       - streamlit
+      - chromadb

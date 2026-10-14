@@ -1,27 +1,212 @@
 """
-Optional project capability: Retrieval-Augmented Generation (RAG).
+Retrieval-Augmented Generation (RAG) module for Oracle RAG.
 
-Implement this module only if this capability is relevant to your application's
-user problem. Remove the file if the capability is not used.
-
-Conceptual Overview:
--------------------
-Retrieval-Augmented Generation (RAG) enhances model responses by retrieving
-relevant external information before passing the prompt to the LLM.
-
-Key concepts to consider when implementing RAG:
-1. Document Ingestion: Loading custom domain documents (PDFs, text, markdown).
-2. Embeddings & Vector Store: Converting text into dense vector embeddings and
-   storing them in a vector database or local index.
-3. Retrieval: Searching the vector store for text chunks semantically similar
-   to the user query.
-4. Grounding: Constructing a prompt that supplies retrieved context to the model,
-   reducing hallucinations and grounding answers in verified factual data.
-
-Note:
------
-Do not implement RAG unless your project requires answering questions over
-specific custom documents or static domain knowledge bases.
+This module handles:
+1. In-memory document parsing and semantic chunking via Docling (lazy-loaded).
+2. Persistent vector storage and indexing via ChromaDB.
+3. Similarity search and rulebook passage retrieval with confidence filtering.
 """
 
-# Implement custom RAG pipeline below if selected for your project.
+import os
+import tempfile
+from typing import BinaryIO, Any
+import chromadb
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+
+from src.config import config
+from src.schemas.responses import RuleCitation
+
+
+class RAGPipeline:
+    """Manages document ingestion, vector storage, and similarity retrieval."""
+
+    def __init__(self):
+        self._chroma_client = None
+        self._embedding_function = None
+        self._collection = None
+        self._converter = None
+        self._chunker = None
+
+    def _get_collection(self):
+        """Lazy-initialize Chroma persistent storage and embedding function."""
+        if self._collection is None:
+            os.makedirs(config.chroma_db_dir, exist_ok=True)
+            self._chroma_client = chromadb.PersistentClient(path=config.chroma_db_dir)
+            self._embedding_function = DefaultEmbeddingFunction()
+            self._collection = self._chroma_client.get_or_create_collection(
+                name=config.rag_collection_name,
+                embedding_function=self._embedding_function,
+            )
+        return self._collection
+
+    @property
+    def converter(self):
+        """Lazy-load Docling DocumentConverter."""
+        if self._converter is None:
+            from docling.document_converter import DocumentConverter
+
+            self._converter = DocumentConverter()
+        return self._converter
+
+    @property
+    def chunker(self):
+        """Lazy-load Docling HybridChunker."""
+        if self._chunker is None:
+            from docling.chunking import HybridChunker
+
+            self._chunker = HybridChunker()
+        return self._chunker
+
+    def _extract_page_number(self, chunk: Any) -> int | None:
+        """Helper to extract page number from Docling chunk provenance if available."""
+        if hasattr(chunk, "meta") and hasattr(chunk.meta, "doc_items") and chunk.meta.doc_items:
+            for item in chunk.meta.doc_items:
+                if hasattr(item, "prov") and item.prov:
+                    for prov in item.prov:
+                        if hasattr(prov, "page_no") and prov.page_no:
+                            return int(prov.page_no)
+        return None
+
+    def ingest_document(self, file_source: str | bytes | BinaryIO, filename: str) -> int:
+        """
+        Parses a document in-memory using Docling and indexes the resulting
+        semantic chunks into persistent ChromaDB.
+
+        Args:
+            file_source: File path (str), file bytes, or file-like object.
+            filename: The original filename (e.g. 'Dungeon_World.pdf').
+
+        Returns:
+            int: The number of rule chunks successfully indexed.
+        """
+        temp_file_path = None
+        try:
+            # If given bytes or a file-like stream (e.g., from Streamlit uploader)
+            if isinstance(file_source, (bytes, bytearray)):
+                suffix = os.path.splitext(filename)[1] or ".pdf"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(file_source)
+                    temp_file_path = tmp.name
+                target_path = temp_file_path
+            elif hasattr(file_source, "read"):
+                suffix = os.path.splitext(filename)[1] or ".pdf"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(file_source.read())
+                    temp_file_path = tmp.name
+                target_path = temp_file_path
+            else:
+                target_path = str(file_source)
+
+            # 1. Parse document structure with Docling
+            conversion_result = self.converter.convert(target_path)
+
+            # 2. Generate hierarchical semantic chunks
+            chunks = list(self.chunker.chunk(conversion_result.document))
+            if not chunks:
+                return 0
+
+            documents: list[str] = []
+            metadatas: list[dict[str, Any]] = []
+            ids: list[str] = []
+
+            for idx, chunk in enumerate(chunks):
+                if hasattr(self.chunker, "serialize"):
+                    chunk_text = self.chunker.serialize(chunk=chunk)
+                else:
+                    chunk_text = getattr(chunk, "text", str(chunk))
+
+                heading = "General Rules"
+                if hasattr(chunk, "meta") and hasattr(chunk.meta, "headings") and chunk.meta.headings:
+                    heading = " > ".join(str(h) for h in chunk.meta.headings)
+
+                page_num = self._extract_page_number(chunk)
+
+                documents.append(chunk_text)
+                metadatas.append(
+                    {
+                        "source": filename,
+                        "section": heading,
+                        "page": page_num or 1,
+                    }
+                )
+                ids.append(f"{filename}_{idx}")
+
+            # 3. Ingest into persistent ChromaDB
+            collection = self._get_collection()
+            collection.upsert(
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids,
+            )
+
+            return len(documents)
+
+        finally:
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                except OSError:
+                    pass
+
+    def retrieve_relevant_rules(
+        self,
+        query: str,
+        n_results: int = 4,
+        max_distance: float | None = None,
+    ) -> list[RuleCitation]:
+        """
+        Retrieves the most semantically relevant rule chunks for a given question.
+        """
+        collection = self._get_collection()
+        if collection.count() == 0:
+            return []
+
+        threshold = max_distance if max_distance is not None else config.similarity_threshold
+
+        query_res = collection.query(
+            query_texts=[query],
+            n_results=min(n_results, collection.count()),
+        )
+
+        citations: list[RuleCitation] = []
+        if query_res and query_res.get("documents") and query_res["documents"][0]:
+            docs = query_res["documents"][0]
+            metas = query_res["metadatas"][0] if query_res.get("metadatas") else [{}] * len(docs)
+            distances = (
+                query_res["distances"][0] if query_res.get("distances") else [0.0] * len(docs)
+            )
+
+            for doc, meta, dist in zip(docs, metas, distances):
+                if dist <= threshold:
+                    citations.append(
+                        RuleCitation(
+                            source=meta.get("source", "Unknown Tome"),
+                            section=meta.get("section", "General"),
+                            page=meta.get("page"),
+                            text=doc,
+                        )
+                    )
+
+        return citations
+
+    def get_indexed_tomes(self) -> list[str]:
+        """Returns the list of unique book/document names currently indexed in ChromaDB."""
+        collection = self._get_collection()
+        if collection.count() == 0:
+            return []
+        all_meta = collection.get(include=["metadatas"])
+        if not all_meta or not all_meta.get("metadatas"):
+            return []
+        sources = {m.get("source") for m in all_meta["metadatas"] if m and m.get("source")}
+        return sorted(list(sources))
+
+
+_pipeline_instance: RAGPipeline | None = None
+
+
+def get_rag_pipeline() -> RAGPipeline:
+    """Returns the singleton RAGPipeline instance."""
+    global _pipeline_instance
+    if _pipeline_instance is None:
+        _pipeline_instance = RAGPipeline()
+    return _pipeline_instance
