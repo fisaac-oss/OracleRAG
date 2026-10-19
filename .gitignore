@@ -24,3 +24,6 @@ Thumbs.db
 
 # Vector database persistence
 data/chroma/
+
+# Agent skills
+.agents/skills/
