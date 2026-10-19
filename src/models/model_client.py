@@ -21,21 +21,33 @@ class ModelNotFoundError(ModelClientError):
 class OllamaModelClient:
     """Encapsulates interaction with local Ollama inference server."""
 
-    def __init__(self, base_url: Optional[str] = None, model_name: Optional[str] = None):
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        model_name: Optional[str] = None,
+        temperature: Optional[float] = None,
+    ):
         self.base_url = base_url or config.ollama_base_url
         self.model_name = model_name or config.model_name
+        self.temperature = (
+            temperature if temperature is not None else config.model_temperature
+        )
         self._client = ollama.Client(host=self.base_url)
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, temperature: Optional[float] = None) -> str:
         """
         Sends a user prompt to local Ollama model and returns generated response text.
         
         Raises ModelClientError subclass if connection or execution fails.
         """
+        temp = self.temperature if temperature is None else temperature
+        options = {"temperature": temp}
+
         try:
             response = self._client.chat(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
+                options=options,
             )
             
             # Standardize extraction from dict or chat response object

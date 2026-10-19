@@ -156,3 +156,33 @@ def test_ingest_rulebook_success():
     assert res.chunks_count == 42
     assert res.filename == "rules.pdf"
     mock_rag.ingest_document.assert_called_once_with(b"PDF content", "rules.pdf")
+
+
+def test_model_client_temperature_options():
+    """Verify that OllamaModelClient passes the configured temperature in options to ollama.chat."""
+    from unittest.mock import patch
+    from src.models.model_client import OllamaModelClient
+
+    with patch("ollama.Client") as mock_ollama_client_cls:
+        mock_instance = MagicMock()
+        mock_instance.chat.return_value = {"message": {"content": "Test response"}}
+        mock_ollama_client_cls.return_value = mock_instance
+
+        # 1. Default temperature from config
+        client = OllamaModelClient(model_name="test_model")
+        client.generate("Hello world")
+
+        mock_instance.chat.assert_called_with(
+            model="test_model",
+            messages=[{"role": "user", "content": "Hello world"}],
+            options={"temperature": config.model_temperature},
+        )
+
+        # 2. Dynamic override temperature
+        client.generate("Hello again", temperature=0.5)
+        mock_instance.chat.assert_called_with(
+            model="test_model",
+            messages=[{"role": "user", "content": "Hello again"}],
+            options={"temperature": 0.5},
+        )
+
