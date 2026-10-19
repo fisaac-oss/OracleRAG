@@ -217,7 +217,7 @@ def build_ui():
 
     # Render conversation feed
     for message in current_chat_history:
-        avatar = "🎲" if message["role"] == "user" else "🔮"
+        avatar = "🧙" if message["role"] == "user" else "🔮"
         with st.chat_message(message["role"], avatar=avatar):
             st.markdown(message["content"])
             if message.get("citations"):
@@ -243,7 +243,7 @@ def build_ui():
 
     if prompt:
         # 1. User message
-        with st.chat_message("user", avatar="🎲"):
+        with st.chat_message("user", avatar="🧙"):
             st.markdown(prompt)
         current_chat_history.append({"role": "user", "content": prompt})
 
