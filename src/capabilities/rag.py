@@ -153,19 +153,33 @@ class RAGPipeline:
         query: str,
         n_results: int = 4,
         max_distance: float | None = None,
+        selected_tomes: list[str] | None = None,
     ) -> list[RuleCitation]:
         """
         Retrieves the most semantically relevant rule chunks for a given question.
+        Optionally filters chunks by the specified list of selected tome/source names.
         """
         collection = self._get_collection()
         if collection.count() == 0:
             return []
 
+        # If caller explicitly provided an empty list, no tomes are selected
+        if selected_tomes is not None and len(selected_tomes) == 0:
+            return []
+
         threshold = max_distance if max_distance is not None else config.similarity_threshold
+
+        where_filter = None
+        if selected_tomes is not None:
+            if len(selected_tomes) == 1:
+                where_filter = {"source": selected_tomes[0]}
+            else:
+                where_filter = {"source": {"$in": selected_tomes}}
 
         query_res = collection.query(
             query_texts=[query],
             n_results=min(n_results, collection.count()),
+            where=where_filter,
         )
 
         citations: list[RuleCitation] = []

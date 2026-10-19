@@ -71,10 +71,15 @@ class AIService:
         except Exception:
             return []
 
-    def process_message(self, user_message: str) -> AIResponse:
+    def process_message(
+        self,
+        user_message: str,
+        selected_tomes: Optional[list[str]] = None,
+    ) -> AIResponse:
         """
         Processes a raw user message string and returns a structured AIResponse.
         Catches technical failures and converts them to friendly user-facing messages.
+        Optionally limits RAG retrieval to selected_tomes.
         """
         # 1. Validate empty input
         if not user_message or not user_message.strip():
@@ -86,15 +91,21 @@ class AIService:
 
         try:
             # 2. Schema validation
-            request = UserRequest(message=user_message.strip())
+            request = UserRequest(
+                message=user_message.strip(),
+                selected_tomes=selected_tomes,
+            )
 
             # 3. Retrieve relevant rulebook excerpts via RAG
             rag = self._get_rag()
-            citations: list[RuleCitation] = rag.retrieve_relevant_rules(request.message)
+            citations: list[RuleCitation] = rag.retrieve_relevant_rules(
+                request.message,
+                selected_tomes=request.selected_tomes,
+            )
 
             indexed_tomes = rag.get_indexed_tomes()
 
-            # 5. Call model client
+            # 4. Call model client
             client = self._get_client()
             model_name = (
                 client.model_name
@@ -102,12 +113,33 @@ class AIService:
                 else "oracle_model"
             )
 
-            # Fallback Guardrail: If tomes are uploaded, but no rules matched the threshold
-            if indexed_tomes and not citations:
+            # Fallback Guardrail 1: If tomes are indexed, but the user explicitly selected no tomes
+            if (
+                indexed_tomes
+                and request.selected_tomes is not None
+                and len(request.selected_tomes) == 0
+            ):
+                return AIResponse(
+                    content=(
+                        "📜 *No grimoires or scriptures have been selected for consultation.*\n\n"
+                        "Please select at least one tome from the library to divine answers from."
+                    ),
+                    success=True,
+                    model=model_name,
+                    citations=[],
+                )
+
+            # Fallback Guardrail 2: If tomes are indexed/selected, but no rules matched the threshold
+            if (indexed_tomes or request.selected_tomes) and not citations:
+                tome_context = (
+                    "selected tomes"
+                    if request.selected_tomes is not None
+                    else "currently indexed tomes"
+                )
                 return AIResponse(
                     content=(
                         "📜 *The consulted scriptures contain no decrees regarding this matter.*\n\n"
-                        "The Oracle cannot divine an answer based on your currently indexed tomes."
+                        f"The Oracle cannot divine an answer based on your {tome_context}."
                     ),
                     success=True,
                     model=model_name,
@@ -188,16 +220,21 @@ class AIService:
 
 
 def generate_response(
-    user_message: str, service: Optional[AIService] = None
+    user_message: str,
+    selected_tomes: Optional[list[str]] = None,
+    service: Optional[AIService] = None,
 ) -> AIResponse:
     """
     Main reusable service entry point used by the UI layer.
 
-    Accepts user input message, passes it to the AI service, and returns
-    the generated AIResponse (with content, model, and citations).
+    Accepts user input message, optional selected_tomes list, passes it to the AI service,
+    and returns the generated AIResponse (with content, model, and citations).
     """
     active_service = service or AIService()
-    return active_service.process_message(user_message)
+    return active_service.process_message(
+        user_message=user_message,
+        selected_tomes=selected_tomes,
+    )
 
 
 def ingest_rulebook_file(

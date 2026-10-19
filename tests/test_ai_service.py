@@ -186,3 +186,129 @@ def test_model_client_temperature_options():
             options={"temperature": 0.5},
         )
 
+
+def test_rag_pipeline_retrieve_relevant_rules_filtering():
+    """Verify that RAGPipeline applies correct ChromaDB where filter based on selected_tomes."""
+    from src.capabilities.rag import RAGPipeline
+
+    pipeline = RAGPipeline()
+    mock_collection = MagicMock()
+    mock_collection.count.return_value = 10
+    mock_collection.query.return_value = {
+        "documents": [["Rule excerpt about armor"]],
+        "metadatas": [[{"source": "Armor_Guide.pdf", "section": "Armor", "page": 10}]],
+        "distances": [[0.5]],
+    }
+    pipeline._collection = mock_collection
+
+    # 1. No filter (selected_tomes=None)
+    res_none = pipeline.retrieve_relevant_rules("What is heavy armor?", selected_tomes=None)
+    assert len(res_none) == 1
+    mock_collection.query.assert_called_with(
+        query_texts=["What is heavy armor?"],
+        n_results=4,
+        where=None,
+    )
+
+    # 2. Empty selection (selected_tomes=[]) -> should return empty without querying collection
+    mock_collection.query.reset_mock()
+    res_empty = pipeline.retrieve_relevant_rules("What is heavy armor?", selected_tomes=[])
+    assert res_empty == []
+    assert mock_collection.query.call_count == 0
+
+    # 3. Single selected tome -> should filter where={"source": "Armor_Guide.pdf"}
+    mock_collection.query.reset_mock()
+    res_single = pipeline.retrieve_relevant_rules(
+        "What is heavy armor?", selected_tomes=["Armor_Guide.pdf"]
+    )
+    assert len(res_single) == 1
+    mock_collection.query.assert_called_with(
+        query_texts=["What is heavy armor?"],
+        n_results=4,
+        where={"source": "Armor_Guide.pdf"},
+    )
+
+    # 4. Multiple selected tomes -> should filter where={"source": {"$in": [...]}}
+    mock_collection.query.reset_mock()
+    res_multi = pipeline.retrieve_relevant_rules(
+        "What is heavy armor?", selected_tomes=["Armor_Guide.pdf", "PHB.pdf"]
+    )
+    assert len(res_multi) == 1
+    mock_collection.query.assert_called_with(
+        query_texts=["What is heavy armor?"],
+        n_results=4,
+        where={"source": {"$in": ["Armor_Guide.pdf", "PHB.pdf"]}},
+    )
+
+
+def test_process_message_with_selected_tomes():
+    """Verify that process_message forwards selected_tomes to RAG retrieval."""
+    from src.schemas.responses import RuleCitation
+
+    mock_client = MagicMock()
+    mock_client.model_name = "test_model"
+    mock_client.generate.return_value = "Spellcasting rules verdict."
+
+    mock_rag = MagicMock()
+    mock_rag.get_indexed_tomes.return_value = ["Spells.pdf", "Martial.pdf"]
+    citation = RuleCitation(
+        source="Spells.pdf",
+        section="Magic",
+        page=42,
+        text="A wizard can cast spells using slots.",
+    )
+    mock_rag.retrieve_relevant_rules.return_value = [citation]
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+    response = service.process_message(
+        "How do spell slots work?",
+        selected_tomes=["Spells.pdf"],
+    )
+
+    assert response.success is True
+    assert len(response.citations) == 1
+    assert response.citations[0].source == "Spells.pdf"
+    mock_rag.retrieve_relevant_rules.assert_called_once_with(
+        "How do spell slots work?",
+        selected_tomes=["Spells.pdf"],
+    )
+
+
+def test_process_message_empty_selected_tomes_guardrail():
+    """Verify that if tomes are indexed but user selects none, a friendly warning is returned without LLM call."""
+    mock_client = MagicMock()
+    mock_rag = MagicMock()
+    mock_rag.get_indexed_tomes.return_value = ["Spells.pdf", "Martial.pdf"]
+    mock_rag.retrieve_relevant_rules.return_value = []
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+    response = service.process_message(
+        "How do spell slots work?",
+        selected_tomes=[],
+    )
+
+    assert response.success is True
+    assert "No grimoires or scriptures have been selected for consultation" in response.content
+    assert mock_client.generate.call_count == 0
+
+
+def test_generate_response_with_selected_tomes_and_fallback():
+    """Verify generate_response helper passes selected_tomes and informs user when selected tomes have no decrees."""
+    mock_client = MagicMock()
+    mock_rag = MagicMock()
+    mock_rag.get_indexed_tomes.return_value = ["Spells.pdf", "Martial.pdf"]
+    mock_rag.retrieve_relevant_rules.return_value = []
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+    response = generate_response(
+        "How does spaceship piloting work?",
+        selected_tomes=["Spells.pdf"],
+        service=service,
+    )
+
+    assert response.success is True
+    assert "The consulted scriptures contain no decrees regarding this matter" in response.content
+    assert "based on your selected tomes" in response.content
+    assert mock_client.generate.call_count == 0
+
+

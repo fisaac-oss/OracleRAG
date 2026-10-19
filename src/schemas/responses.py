@@ -5,6 +5,10 @@ class UserRequest(BaseModel):
     """Minimal schema for validating incoming user input."""
 
     message: str = Field(..., description="The user's prompt or message.")
+    selected_tomes: list[str] | None = Field(
+        default=None,
+        description="Optional list of specific book/file names to filter retrieval by.",
+    )
 
 
 class RuleCitation(BaseModel):

@@ -51,6 +51,12 @@ def inject_arcane_styles():
             font-size: 0.78rem;
             color: #A39B8B !important;
         }
+
+        /* Hide native clear-all 'x' button in multiselect */
+        .stMultiSelect [aria-label="Clear all"],
+        .stMultiSelect [aria-label="Clear value"] {
+            display: none !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -75,7 +81,7 @@ def build_dice_roller():
         st.session_state.last_d20_roll = None
 
     st.subheader("🎲 Divination Die")
-    if st.button("Roll d20", use_container_width=True):
+    if st.button("Roll d20", width="stretch"):
         st.session_state.last_d20_roll = random.randint(1, 20)
 
     if st.session_state.get("last_d20_roll") is not None:
@@ -86,6 +92,14 @@ def build_dice_roller():
             st.error("**Natural 1!** 💀 An ill-fated omen...")
         else:
             st.info(f"The die reveals: **{roll}**")
+
+
+def select_all_tomes():
+    st.session_state.selected_tomes = list(st.session_state.indexed_tomes)
+
+
+def deselect_all_tomes():
+    st.session_state.selected_tomes = []
 
 
 @st.dialog("📚 The Oracle's Library of Tomes")
@@ -101,10 +115,15 @@ def build_upload_dialog():
     if uploaded_files:
         for file in uploaded_files:
             if file.name not in st.session_state.indexed_tomes:
-                with st.spinner(f"Inscribing '{file.name}' into sacred archives..."):
+                with st.spinner(f"Inscribing '{file.name}' into sacred archives"):
                     res = ingest_rulebook_file(file, file.name)
                     if res.success:
                         st.session_state.indexed_tomes.append(file.name)
+                        if (
+                            "selected_tomes" in st.session_state
+                            and file.name not in st.session_state.selected_tomes
+                        ):
+                            st.session_state.selected_tomes.append(file.name)
                         st.success(
                             f"✨ Inscribed **{file.name}** ({res.chunks_count} rule fragments)"
                         )
@@ -115,9 +134,13 @@ def build_upload_dialog():
 
     if st.session_state.get("indexed_tomes"):
         st.divider()
-        st.caption("Active Grimoires in Sanctum:")
+        st.caption("Grimoires in Sanctum:")
+        selected_set = set(st.session_state.get("selected_tomes", []))
         for tome in st.session_state.indexed_tomes:
-            st.markdown(f"🕯️ `{tome}`")
+            is_active = tome in selected_set
+            icon = "✨" if is_active else "⚪"
+            status_text = "Active" if is_active else "Deselected"
+            st.markdown(f"{icon} `{tome}` — *{status_text}*")
 
 
 def build_sidebar():
@@ -125,14 +148,53 @@ def build_sidebar():
         st.markdown("### 🔮 The Oracle's Sanctum")
 
         # Action to start a new consultation
-        if st.button("✨ Commune Anew", use_container_width=True):
+        if st.button("✨ Commune Anew", width="stretch"):
             create_new_chat()
             st.rerun()
 
         tome_count = len(st.session_state.get("indexed_tomes", []))
         lib_label = f"📖 Library ({tome_count})" if tome_count else "📖 Library"
-        if st.button(lib_label, use_container_width=True):
+        if st.button(lib_label, width="stretch"):
             build_upload_dialog()
+
+        # Selection of desired books to process in answer generation
+        if st.session_state.get("indexed_tomes"):
+            st.markdown("#### 📜 Active Scriptures")
+            st.caption("Select tomes to consult in answer generation:")
+            st.multiselect(
+                "Active Scriptures",
+                options=st.session_state.indexed_tomes,
+                key="selected_tomes",
+                label_visibility="collapsed",
+                placeholder="Choose scriptures to consult...",
+                help="Only passages from the selected books will be processed to answer questions.",
+                select_all=False,
+            )
+
+            col_all, col_clear = st.columns(2)
+            with col_all:
+                st.button(
+                    "Select all",
+                    on_click=select_all_tomes,
+                    width="stretch",
+                    help="Select all books in library",
+                )
+            with col_clear:
+                st.button(
+                    "Clear",
+                    on_click=deselect_all_tomes,
+                    width="stretch",
+                    help="Deselect all books",
+                )
+
+            selected_count = len(st.session_state.get("selected_tomes", []))
+            total_count = len(st.session_state.indexed_tomes)
+            if selected_count == 0:
+                st.caption("⚠️ *No scriptures selected (Oracle cannot consult empty tomes).*")
+            elif selected_count == total_count:
+                st.caption(f"✨ *All {selected_count} scriptures active.*")
+            else:
+                st.caption(f"🔮 *{selected_count} of {total_count} scriptures active.*")
 
         st.divider()
 
@@ -151,7 +213,7 @@ def build_sidebar():
                 button_type = "primary" if is_active else "secondary"
 
                 if st.button(
-                    chat_title, key=chat_id, type=button_type, use_container_width=True
+                    chat_title, key=chat_id, type=button_type, width="stretch"
                 ):
                     st.session_state.current_chat_id = chat_id
                     st.rerun()
@@ -181,6 +243,14 @@ def build_ui():
     if "indexed_tomes" not in st.session_state:
         st.session_state.indexed_tomes = get_active_tomes()
 
+    if "selected_tomes" not in st.session_state:
+        st.session_state.selected_tomes = list(st.session_state.indexed_tomes)
+
+    # Clean up selected_tomes so it stays a valid subset of indexed_tomes
+    st.session_state.selected_tomes = [
+        t for t in st.session_state.selected_tomes if t in st.session_state.indexed_tomes
+    ]
+
     if (
         "current_chat_id" not in st.session_state
         or not st.session_state.current_chat_id
@@ -202,15 +272,15 @@ def build_ui():
         st.write("##### **Sacred Inquiries to Begin:**")
         col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("⚔️ Attacks of Opportunity", use_container_width=True):
+            if st.button("⚔️ Attacks of Opportunity", width="stretch"):
                 selected_prompt = "How do Attacks of Opportunity work in combat?"
         with col2:
-            if st.button("🛡️ Rules of Grappling", use_container_width=True):
+            if st.button("🛡️ Rules of Grappling", width="stretch"):
                 selected_prompt = (
                     "What are the rules and ability checks required for grappling?"
                 )
         with col3:
-            if st.button("🔥 Dual Spellcasting", use_container_width=True):
+            if st.button("🔥 Dual Spellcasting", width="stretch"):
                 selected_prompt = (
                     "Can a spellcaster cast two leveled spells in a single turn?"
                 )
@@ -249,7 +319,10 @@ def build_ui():
 
         # 2. Oracle response
         with st.spinner("Consulting the ancient scriptures..."):
-            response = generate_response(prompt)
+            response = generate_response(
+                prompt,
+                selected_tomes=st.session_state.get("selected_tomes"),
+            )
 
         with st.chat_message("assistant", avatar="🔮"):
             st.markdown(response.content)
