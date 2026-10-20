@@ -1,4 +1,4 @@
-from typing import Optional, BinaryIO
+from typing import Optional, BinaryIO, Callable
 from src.models.model_client import (
     OllamaModelClient,
     ModelClientError,
@@ -43,14 +43,24 @@ class AIService:
         return self.rag
 
     def ingest_rulebook(
-        self, file_source: str | bytes | BinaryIO, filename: str
+        self,
+        file_source: str | bytes | BinaryIO,
+        filename: str,
+        progress_callback: Optional[Callable[[float, str], None]] = None,
     ) -> IngestionResponse:
         """
         Ingests and indexes an uploaded rulebook into the RAG vector store.
         """
         try:
             rag = self._get_rag()
-            count = rag.ingest_document(file_source, filename)
+            if progress_callback is not None:
+                count = rag.ingest_document(
+                    file_source,
+                    filename,
+                    progress_callback=progress_callback,
+                )
+            else:
+                count = rag.ingest_document(file_source, filename)
             return IngestionResponse(
                 filename=filename,
                 chunks_count=count,
@@ -241,12 +251,17 @@ def ingest_rulebook_file(
     file_source: str | bytes | BinaryIO,
     filename: str,
     service: Optional[AIService] = None,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
 ) -> IngestionResponse:
     """
     Service entry point for ingesting rulebook files from the UI layer.
     """
     active_service = service or AIService()
-    return active_service.ingest_rulebook(file_source, filename)
+    return active_service.ingest_rulebook(
+        file_source,
+        filename,
+        progress_callback=progress_callback,
+    )
 
 
 def get_active_tomes(service: Optional[AIService] = None) -> list[str]:

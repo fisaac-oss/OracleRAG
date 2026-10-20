@@ -9,12 +9,49 @@ This module handles:
 
 import os
 import tempfile
-from typing import BinaryIO, Any
+import threading
+from typing import BinaryIO, Any, Callable
 import chromadb
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 from src.config import config
 from src.schemas.responses import RuleCitation
+
+
+class _OCRProgressWrapper:
+    """Wraps an OCR model stage to stream page-by-page progress callbacks."""
+
+    def __init__(
+        self,
+        wrapped_ocr: Any,
+        total_pages: int,
+        progress_callback: Callable[[float, str], None],
+    ):
+        self._wrapped = wrapped_ocr
+        self.total_pages = max(1, total_pages)
+        self.progress_callback = progress_callback
+        self.completed_pages = 0
+        self._lock = threading.Lock()
+
+    def __call__(self, conv_res: Any, page_batch: Any):
+        for page in self._wrapped(conv_res, page_batch):
+            with self._lock:
+                self.completed_pages += 1
+                curr = self.completed_pages
+
+            if self.progress_callback:
+                ocr_ratio = min(1.0, curr / self.total_pages)
+                # Scale OCR progress from 15% to 65% of the total ingestion process
+                fraction = 0.15 + (ocr_ratio * 0.50)
+                pct = int(ocr_ratio * 100)
+                self.progress_callback(
+                    fraction,
+                    f"OCR processing: Page {curr} of {self.total_pages} ({pct}%)...",
+                )
+            yield page
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._wrapped, name)
 
 
 class RAGPipeline:
@@ -67,7 +104,12 @@ class RAGPipeline:
                             return int(prov.page_no)
         return None
 
-    def ingest_document(self, file_source: str | bytes | BinaryIO, filename: str) -> int:
+    def ingest_document(
+        self,
+        file_source: str | bytes | BinaryIO,
+        filename: str,
+        progress_callback: Callable[[float, str], None] | None = None,
+    ) -> int:
         """
         Parses a document in-memory using Docling and indexes the resulting
         semantic chunks into persistent ChromaDB.
@@ -75,10 +117,14 @@ class RAGPipeline:
         Args:
             file_source: File path (str), file bytes, or file-like object.
             filename: The original filename (e.g. 'Dungeon_World.pdf').
+            progress_callback: Optional callback accepting (fraction, status_text).
 
         Returns:
             int: The number of rule chunks successfully indexed.
         """
+        if progress_callback:
+            progress_callback(0.05, f"Staging '{filename}' for analysis...")
+
         temp_file_path = None
         try:
             # If given bytes or a file-like stream (e.g., from Streamlit uploader)
@@ -97,12 +143,60 @@ class RAGPipeline:
             else:
                 target_path = str(file_source)
 
-            # 1. Parse document structure with Docling
-            conversion_result = self.converter.convert(target_path)
+            # Detect page count if PDF
+            page_info = ""
+            total_pages = 0
+            if filename.lower().endswith(".pdf"):
+                try:
+                    import pypdfium2 as pdfium
+
+                    pdf = pdfium.PdfDocument(target_path)
+                    total_pages = len(pdf)
+                    pdf.close()
+                    if total_pages > 0:
+                        page_info = f" ({total_pages} pages)"
+                except Exception:
+                    total_pages = 0
+
+            # 1. Parse document structure and OCR with Docling
+            pdf_pipe = None
+            orig_ocr = None
+            if progress_callback and filename.lower().endswith(".pdf") and total_pages > 0:
+                try:
+                    from docling.datamodel.base_models import InputFormat
+
+                    pdf_pipe = self.converter._get_pipeline(InputFormat.PDF)
+                    if pdf_pipe and hasattr(pdf_pipe, "ocr_model") and pdf_pipe.ocr_model:
+                        orig_ocr = pdf_pipe.ocr_model
+                        pdf_pipe.ocr_model = _OCRProgressWrapper(
+                            orig_ocr, total_pages, progress_callback
+                        )
+                except Exception:
+                    pdf_pipe = None
+                    orig_ocr = None
+
+            try:
+                if progress_callback:
+                    progress_callback(
+                        0.15,
+                        f"Initializing Docling OCR & structure extraction{page_info}...",
+                    )
+
+                conversion_result = self.converter.convert(target_path)
+            finally:
+                if pdf_pipe and orig_ocr:
+                    pdf_pipe.ocr_model = orig_ocr
+
+            if progress_callback:
+                progress_callback(
+                    0.65, "OCR & layout analysis complete. Slicing into rule chunks..."
+                )
 
             # 2. Generate hierarchical semantic chunks
             chunks = list(self.chunker.chunk(conversion_result.document))
             if not chunks:
+                if progress_callback:
+                    progress_callback(1.0, "No text chunks discovered in document.")
                 return 0
 
             documents: list[str] = []
@@ -132,12 +226,22 @@ class RAGPipeline:
                 ids.append(f"{filename}_{idx}")
 
             # 3. Ingest into persistent ChromaDB
+            if progress_callback:
+                progress_callback(
+                    0.85, f"Inscribing {len(documents)} rule fragments into ChromaDB..."
+                )
+
             collection = self._get_collection()
             collection.upsert(
                 documents=documents,
                 metadatas=metadatas,
                 ids=ids,
             )
+
+            if progress_callback:
+                progress_callback(
+                    1.0, f"Successfully inscribed {len(documents)} fragments!"
+                )
 
             return len(documents)
 

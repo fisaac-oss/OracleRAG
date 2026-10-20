@@ -1,4 +1,5 @@
 import random
+import threading
 import uuid
 import streamlit as st
 from src.services.ai_service import (
@@ -115,9 +116,46 @@ def build_upload_dialog():
     if uploaded_files:
         for file in uploaded_files:
             if file.name not in st.session_state.indexed_tomes:
-                with st.spinner(f"Inscribing '{file.name}' into sacred archives"):
-                    res = ingest_rulebook_file(file, file.name)
+                with st.status(
+                    f"Inscribing '{file.name}' into sacred archives...",
+                    expanded=True,
+                ) as status_box:
+                    progress_bar = st.progress(0, text="Staging manuscript...")
+                    status_placeholder = st.empty()
+
+                    ctx = None
+                    try:
+                        from streamlit.runtime.scriptrunner_utils.script_run_context import (
+                            get_script_run_ctx,
+                            add_script_run_ctx,
+                        )
+
+                        ctx = get_script_run_ctx()
+                    except Exception:
+                        pass
+
+                    def on_progress(percent: float, message: str):
+                        if ctx is not None:
+                            try:
+                                add_script_run_ctx(threading.current_thread(), ctx)
+                            except Exception:
+                                pass
+                        progress_bar.progress(percent, text=message)
+                        status_placeholder.caption(f"🕯️ *{message}*")
+
+                    res = ingest_rulebook_file(
+                        file,
+                        file.name,
+                        progress_callback=on_progress,
+                    )
+
                     if res.success:
+                        progress_bar.progress(1.0, text="Sacred inscription complete!")
+                        status_box.update(
+                            label=f"✨ Inscribed '{file.name}' ({res.chunks_count} rule fragments)",
+                            state="complete",
+                            expanded=False,
+                        )
                         st.session_state.indexed_tomes.append(file.name)
                         if (
                             "selected_tomes" in st.session_state
@@ -128,6 +166,11 @@ def build_upload_dialog():
                             f"✨ Inscribed **{file.name}** ({res.chunks_count} rule fragments)"
                         )
                     else:
+                        status_box.update(
+                            label=f"❌ Failed to inscribe '{file.name}'",
+                            state="error",
+                            expanded=True,
+                        )
                         st.error(f"Failed to inscribe {file.name}: {res.error_message}")
             else:
                 st.info(f"📜 `{file.name}` is already inscribed.")

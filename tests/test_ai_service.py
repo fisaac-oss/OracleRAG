@@ -312,3 +312,102 @@ def test_generate_response_with_selected_tomes_and_fallback():
     assert mock_client.generate.call_count == 0
 
 
+def test_ingest_rulebook_with_progress_callback():
+    """Verify that ingest_rulebook forwards progress_callback to rag.ingest_document."""
+    mock_rag = MagicMock()
+    mock_rag.ingest_document.return_value = 15
+
+    progress_calls = []
+
+    def callback(percent: float, msg: str):
+        progress_calls.append((percent, msg))
+
+    service = AIService(rag=mock_rag)
+    res = service.ingest_rulebook(
+        b"PDF data", "new_rules.pdf", progress_callback=callback
+    )
+
+    assert res.success is True
+    assert res.chunks_count == 15
+    mock_rag.ingest_document.assert_called_once_with(
+        b"PDF data", "new_rules.pdf", progress_callback=callback
+    )
+
+
+def test_rag_pipeline_ingest_document_invokes_progress_callback():
+    """Verify that RAGPipeline.ingest_document calls the progress_callback at each major stage."""
+    from src.capabilities.rag import RAGPipeline
+
+    pipeline = RAGPipeline()
+    mock_converter = MagicMock()
+    mock_conv_result = MagicMock()
+    mock_conv_result.document = MagicMock()
+    mock_converter.convert.return_value = mock_conv_result
+    pipeline._converter = mock_converter
+
+    mock_chunker = MagicMock()
+    mock_chunk = MagicMock()
+    mock_chunker.chunk.return_value = [mock_chunk]
+    mock_chunker.serialize.return_value = "Sample rule chunk text"
+    pipeline._chunker = mock_chunker
+
+    mock_collection = MagicMock()
+    pipeline._collection = mock_collection
+
+    progress_events = []
+
+    def on_progress(percent: float, message: str):
+        progress_events.append((percent, message))
+
+    count = pipeline.ingest_document(
+        b"dummy pdf bytes",
+        "sample.pdf",
+        progress_callback=on_progress,
+    )
+
+    assert count == 1
+    assert len(progress_events) >= 4
+    # Check that progress starts near 0 and reaches 1.0
+    fractions = [p[0] for p in progress_events]
+    assert fractions[0] <= 0.1
+    assert fractions[-1] == 1.0
+    # Check that OCR stage is reported
+    messages = " ".join(p[1] for p in progress_events)
+    assert "OCR" in messages
+    assert "ChromaDB" in messages
+
+
+def test_ocr_progress_wrapper_page_by_page():
+    """Verify that _OCRProgressWrapper intercepts each page and reports granular OCR progress."""
+    from src.capabilities.rag import _OCRProgressWrapper
+
+    dummy_pages = [MagicMock(page_no=1), MagicMock(page_no=2), MagicMock(page_no=3)]
+
+    def mock_ocr(conv_res, page_batch):
+        for p in dummy_pages:
+            yield p
+
+    progress_log = []
+
+    def callback(percent: float, message: str):
+        progress_log.append((percent, message))
+
+    wrapper = _OCRProgressWrapper(
+        wrapped_ocr=mock_ocr,
+        total_pages=3,
+        progress_callback=callback,
+    )
+
+    yielded = list(wrapper(None, dummy_pages))
+    assert len(yielded) == 3
+    assert len(progress_log) == 3
+
+    # Verify that each page was reported with increasing percentages
+    assert "Page 1 of 3 (33%)" in progress_log[0][1]
+    assert "Page 2 of 3 (66%)" in progress_log[1][1]
+    assert "Page 3 of 3 (100%)" in progress_log[2][1]
+    assert progress_log[0][0] < progress_log[1][0] < progress_log[2][0]
+
+
+
+
