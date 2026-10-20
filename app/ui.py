@@ -64,6 +64,43 @@ def inject_arcane_styles():
     )
 
 
+def get_current_chat_tomes_key() -> str:
+    """Returns the session state key for the current consultation's selected tomes."""
+    current_id = st.session_state.get("current_chat_id", "default")
+    return f"selected_tomes_{current_id}"
+
+
+def get_current_chat_tomes() -> list[str]:
+    """Returns the persistent list of selected tomes for the active consultation."""
+    cid = st.session_state.get("current_chat_id")
+    if not cid:
+        return list(st.session_state.get("indexed_tomes", []))
+
+    if "chat_tomes" not in st.session_state:
+        st.session_state.chat_tomes = {}
+
+    if cid not in st.session_state.chat_tomes:
+        key = get_current_chat_tomes_key()
+        if key in st.session_state:
+            st.session_state.chat_tomes[cid] = list(st.session_state[key])
+        else:
+            st.session_state.chat_tomes[cid] = list(
+                st.session_state.get("indexed_tomes", [])
+            )
+
+    return st.session_state.chat_tomes[cid]
+
+
+def sync_active_tomes():
+    """Syncs the multiselect widget state into persistent per-chat storage."""
+    cid = st.session_state.get("current_chat_id")
+    key = get_current_chat_tomes_key()
+    if cid and key in st.session_state:
+        if "chat_tomes" not in st.session_state:
+            st.session_state.chat_tomes = {}
+        st.session_state.chat_tomes[cid] = list(st.session_state[key])
+
+
 # Helper function to create a new consultation
 def create_new_chat():
     # If the current active chat is already empty, just keep using it
@@ -74,6 +111,14 @@ def create_new_chat():
     new_chat_id = str(uuid.uuid4())
     st.session_state.chats[new_chat_id] = []
     st.session_state.current_chat_id = new_chat_id
+
+    # Persist default books for this consultation
+    default_tomes = list(st.session_state.get("indexed_tomes", []))
+    if "chat_tomes" not in st.session_state:
+        st.session_state.chat_tomes = {}
+    st.session_state.chat_tomes[new_chat_id] = list(default_tomes)
+    st.session_state[f"selected_tomes_{new_chat_id}"] = list(default_tomes)
+    st.session_state["_last_synced_chat_id"] = new_chat_id
 
 
 # In-session utility: Divination Die (d20)
@@ -96,11 +141,22 @@ def build_dice_roller():
 
 
 def select_all_tomes():
-    st.session_state.selected_tomes = list(st.session_state.indexed_tomes)
+    cid = st.session_state.get("current_chat_id")
+    all_tomes = list(st.session_state.indexed_tomes)
+    st.session_state[get_current_chat_tomes_key()] = list(all_tomes)
+    if "chat_tomes" not in st.session_state:
+        st.session_state.chat_tomes = {}
+    if cid:
+        st.session_state.chat_tomes[cid] = list(all_tomes)
 
 
 def deselect_all_tomes():
-    st.session_state.selected_tomes = []
+    cid = st.session_state.get("current_chat_id")
+    st.session_state[get_current_chat_tomes_key()] = []
+    if "chat_tomes" not in st.session_state:
+        st.session_state.chat_tomes = {}
+    if cid:
+        st.session_state.chat_tomes[cid] = []
 
 
 @st.dialog("📚 The Oracle's Library of Tomes")
@@ -157,11 +213,20 @@ def build_upload_dialog():
                             expanded=False,
                         )
                         st.session_state.indexed_tomes.append(file.name)
+                        active_key = get_current_chat_tomes_key()
                         if (
-                            "selected_tomes" in st.session_state
-                            and file.name not in st.session_state.selected_tomes
+                            active_key in st.session_state
+                            and file.name not in st.session_state[active_key]
                         ):
-                            st.session_state.selected_tomes.append(file.name)
+                            st.session_state[active_key].append(file.name)
+                        cid = st.session_state.get("current_chat_id")
+                        if (
+                            cid
+                            and "chat_tomes" in st.session_state
+                            and cid in st.session_state.chat_tomes
+                            and file.name not in st.session_state.chat_tomes[cid]
+                        ):
+                            st.session_state.chat_tomes[cid].append(file.name)
                         st.success(
                             f"✨ Inscribed **{file.name}** ({res.chunks_count} rule fragments)"
                         )
@@ -178,7 +243,7 @@ def build_upload_dialog():
     if st.session_state.get("indexed_tomes"):
         st.divider()
         st.caption("Grimoires in Sanctum:")
-        selected_set = set(st.session_state.get("selected_tomes", []))
+        selected_set = set(get_current_chat_tomes())
         for tome in st.session_state.indexed_tomes:
             is_active = tome in selected_set
             icon = "✨" if is_active else "⚪"
@@ -204,15 +269,23 @@ def build_sidebar():
         if st.session_state.get("indexed_tomes"):
             st.markdown("#### 📜 Active Scriptures")
             st.caption("Select tomes to consult in answer generation:")
+            active_key = get_current_chat_tomes_key()
+            if active_key not in st.session_state:
+                st.session_state[active_key] = list(get_current_chat_tomes())
+
             st.multiselect(
                 "Active Scriptures",
                 options=st.session_state.indexed_tomes,
-                key="selected_tomes",
+                key=active_key,
+                on_change=sync_active_tomes,
                 label_visibility="collapsed",
                 placeholder="Choose scriptures to consult...",
                 help="Only passages from the selected books will be processed to answer questions.",
                 select_all=False,
             )
+
+            # Keep persistent per-chat selection synced
+            sync_active_tomes()
 
             col_all, col_clear = st.columns(2)
             with col_all:
@@ -230,7 +303,8 @@ def build_sidebar():
                     help="Deselect all books",
                 )
 
-            selected_count = len(st.session_state.get("selected_tomes", []))
+            current_tomes = get_current_chat_tomes()
+            selected_count = len(current_tomes)
             total_count = len(st.session_state.indexed_tomes)
             if selected_count == 0:
                 st.caption("⚠️ *No scriptures selected (Oracle cannot consult empty tomes).*")
@@ -286,19 +360,43 @@ def build_ui():
     if "indexed_tomes" not in st.session_state:
         st.session_state.indexed_tomes = get_active_tomes()
 
-    if "selected_tomes" not in st.session_state:
-        st.session_state.selected_tomes = list(st.session_state.indexed_tomes)
-
-    # Clean up selected_tomes so it stays a valid subset of indexed_tomes
-    st.session_state.selected_tomes = [
-        t for t in st.session_state.selected_tomes if t in st.session_state.indexed_tomes
-    ]
+    if "chat_tomes" not in st.session_state:
+        st.session_state.chat_tomes = {}
 
     if (
         "current_chat_id" not in st.session_state
         or not st.session_state.current_chat_id
     ):
         create_new_chat()
+
+    cid = st.session_state.current_chat_id
+    active_key = get_current_chat_tomes_key()
+
+    # Backfill or ensure current consultation has persistent tomes tracked
+    if cid not in st.session_state.chat_tomes:
+        existing = st.session_state.get(active_key) or st.session_state.get(
+            "selected_tomes"
+        )
+        st.session_state.chat_tomes[cid] = (
+            list(existing)
+            if existing is not None
+            else list(st.session_state.indexed_tomes)
+        )
+
+    # Clean up active consultation's tomes so it stays a valid subset of indexed_tomes
+    st.session_state.chat_tomes[cid] = [
+        t
+        for t in st.session_state.chat_tomes[cid]
+        if t in st.session_state.indexed_tomes
+    ]
+
+    # When switching chats or initializing widget key, restore from persistent chat_tomes
+    last_synced = st.session_state.get("_last_synced_chat_id")
+    if last_synced != cid or active_key not in st.session_state:
+        st.session_state[active_key] = list(st.session_state.chat_tomes[cid])
+        st.session_state["_last_synced_chat_id"] = cid
+    else:
+        st.session_state.chat_tomes[cid] = list(st.session_state[active_key])
 
     # 2. Build sidebar after state is guaranteed to exist
     build_sidebar()
@@ -364,7 +462,7 @@ def build_ui():
         with st.spinner("Consulting the ancient scriptures..."):
             response = generate_response(
                 prompt,
-                selected_tomes=st.session_state.get("selected_tomes"),
+                selected_tomes=get_current_chat_tomes(),
             )
 
         with st.chat_message("assistant", avatar="🔮"):
