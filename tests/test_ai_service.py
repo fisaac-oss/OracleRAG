@@ -411,3 +411,37 @@ def test_ocr_progress_wrapper_page_by_page():
 
 
 
+
+
+def test_delete_rulebook_rag_pipeline():
+    """Verify that RAGPipeline.delete_rulebook deletes chunks matching the source from ChromaDB."""
+    from src.capabilities.rag import RAGPipeline
+
+    pipeline = RAGPipeline()
+    mock_collection = MagicMock()
+    pipeline._collection = mock_collection
+
+    res = pipeline.delete_rulebook("test_book.pdf")
+
+    assert res is True
+    mock_collection.delete.assert_called_once_with(where={"source": "test_book.pdf"})
+
+
+def test_delete_rulebook_ai_service():
+    """Verify that AIService and delete_rulebook_file delegate to the RAG pipeline."""
+    from src.services.ai_service import delete_rulebook_file
+
+    mock_rag = MagicMock()
+    mock_rag.delete_rulebook.return_value = True
+
+    service = AIService(rag=mock_rag)
+    res = service.delete_rulebook("custom_rules.pdf")
+
+    assert res is True
+    mock_rag.delete_rulebook.assert_called_once_with("custom_rules.pdf")
+
+    # Test top-level function
+    mock_rag.reset_mock()
+    res_helper = delete_rulebook_file("custom_rules.pdf", service=service)
+    assert res_helper is True
+    mock_rag.delete_rulebook.assert_called_once_with("custom_rules.pdf")

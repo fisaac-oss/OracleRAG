@@ -96,7 +96,11 @@ class RAGPipeline:
 
     def _extract_page_number(self, chunk: Any) -> int | None:
         """Helper to extract page number from Docling chunk provenance if available."""
-        if hasattr(chunk, "meta") and hasattr(chunk.meta, "doc_items") and chunk.meta.doc_items:
+        if (
+            hasattr(chunk, "meta")
+            and hasattr(chunk.meta, "doc_items")
+            and chunk.meta.doc_items
+        ):
             for item in chunk.meta.doc_items:
                 if hasattr(item, "prov") and item.prov:
                     for prov in item.prov:
@@ -161,12 +165,20 @@ class RAGPipeline:
             # 1. Parse document structure and OCR with Docling
             pdf_pipe = None
             orig_ocr = None
-            if progress_callback and filename.lower().endswith(".pdf") and total_pages > 0:
+            if (
+                progress_callback
+                and filename.lower().endswith(".pdf")
+                and total_pages > 0
+            ):
                 try:
                     from docling.datamodel.base_models import InputFormat
 
                     pdf_pipe = self.converter._get_pipeline(InputFormat.PDF)
-                    if pdf_pipe and hasattr(pdf_pipe, "ocr_model") and pdf_pipe.ocr_model:
+                    if (
+                        pdf_pipe
+                        and hasattr(pdf_pipe, "ocr_model")
+                        and pdf_pipe.ocr_model
+                    ):
                         orig_ocr = pdf_pipe.ocr_model
                         pdf_pipe.ocr_model = _OCRProgressWrapper(
                             orig_ocr, total_pages, progress_callback
@@ -210,7 +222,11 @@ class RAGPipeline:
                     chunk_text = getattr(chunk, "text", str(chunk))
 
                 heading = "General Rules"
-                if hasattr(chunk, "meta") and hasattr(chunk.meta, "headings") and chunk.meta.headings:
+                if (
+                    hasattr(chunk, "meta")
+                    and hasattr(chunk.meta, "headings")
+                    and chunk.meta.headings
+                ):
                     heading = " > ".join(str(h) for h in chunk.meta.headings)
 
                 page_num = self._extract_page_number(chunk)
@@ -271,7 +287,9 @@ class RAGPipeline:
         if selected_tomes is not None and len(selected_tomes) == 0:
             return []
 
-        threshold = max_distance if max_distance is not None else config.similarity_threshold
+        threshold = (
+            max_distance if max_distance is not None else config.similarity_threshold
+        )
 
         where_filter = None
         if selected_tomes is not None:
@@ -289,9 +307,15 @@ class RAGPipeline:
         citations: list[RuleCitation] = []
         if query_res and query_res.get("documents") and query_res["documents"][0]:
             docs = query_res["documents"][0]
-            metas = query_res["metadatas"][0] if query_res.get("metadatas") else [{}] * len(docs)
+            metas = (
+                query_res["metadatas"][0]
+                if query_res.get("metadatas")
+                else [{}] * len(docs)
+            )
             distances = (
-                query_res["distances"][0] if query_res.get("distances") else [0.0] * len(docs)
+                query_res["distances"][0]
+                if query_res.get("distances")
+                else [0.0] * len(docs)
             )
 
             for doc, meta, dist in zip(docs, metas, distances):
@@ -315,8 +339,27 @@ class RAGPipeline:
         all_meta = collection.get(include=["metadatas"])
         if not all_meta or not all_meta.get("metadatas"):
             return []
-        sources = {m.get("source") for m in all_meta["metadatas"] if m and m.get("source")}
+        sources = {
+            m.get("source") for m in all_meta["metadatas"] if m and m.get("source")
+        }
         return sorted(list(sources))
+
+    def delete_rulebook(self, filename: str) -> bool:
+        """
+        Removes all chunks associated with a given rulebook/filename from ChromaDB.
+
+        Args:
+            filename: The original filename / source name (e.g. 'Dungeon_World.pdf').
+
+        Returns:
+            bool: True if deletion succeeded, False otherwise.
+        """
+        try:
+            collection = self._get_collection()
+            collection.delete(where={"source": filename})
+            return True
+        except Exception:
+            return False
 
 
 _pipeline_instance: RAGPipeline | None = None

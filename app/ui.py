@@ -6,6 +6,7 @@ from src.services.ai_service import (
     generate_response,
     ingest_rulebook_file,
     get_active_tomes,
+    delete_rulebook_file,
 )
 
 
@@ -159,6 +160,40 @@ def deselect_all_tomes():
         st.session_state.chat_tomes[cid] = []
 
 
+def remove_tome_from_sanctum(tome: str) -> bool:
+    """Purges a book from ChromaDB vector store and synchronizes all active session state."""
+    success = delete_rulebook_file(tome)
+    if success:
+        # 1. Remove from indexed_tomes
+        if (
+            "indexed_tomes" in st.session_state
+            and tome in st.session_state.indexed_tomes
+        ):
+            st.session_state.indexed_tomes.remove(tome)
+
+        # 2. Remove from persistent per-chat tomes
+        if "chat_tomes" in st.session_state:
+            for cid in list(st.session_state.chat_tomes.keys()):
+                st.session_state.chat_tomes[cid] = [
+                    t for t in st.session_state.chat_tomes[cid] if t != tome
+                ]
+
+        # 3. Clean up active widget keys in session state
+        for key in list(st.session_state.keys()):
+            if key.startswith("selected_tomes_"):
+                val = st.session_state[key]
+                if isinstance(val, list):
+                    st.session_state[key] = [t for t in val if t != tome]
+
+        if "selected_tomes" in st.session_state and isinstance(
+            st.session_state.selected_tomes, list
+        ):
+            st.session_state.selected_tomes = [
+                t for t in st.session_state.selected_tomes if t != tome
+            ]
+    return success
+
+
 @st.dialog("📚 The Oracle's Library of Tomes")
 def build_upload_dialog():
     st.write("Add your rulebooks, compendiums, or grimoires (`.pdf`, `.docx`, `.md`).")
@@ -244,11 +279,39 @@ def build_upload_dialog():
         st.divider()
         st.caption("Grimoires in Sanctum:")
         selected_set = set(get_current_chat_tomes())
-        for tome in st.session_state.indexed_tomes:
+        for tome in list(st.session_state.indexed_tomes):
             is_active = tome in selected_set
             icon = "✨" if is_active else "⚪"
             status_text = "Active" if is_active else "Deselected"
-            st.markdown(f"{icon} `{tome}` — *{status_text}*")
+
+            col_label, col_action = st.columns(
+                [0.82, 0.18], vertical_alignment="center"
+            )
+            with col_label:
+                st.markdown(f"{icon} `{tome}` — *{status_text}*")
+            with col_action:
+                with st.popover("🗑️", help=f"Banish '{tome}' from the Sanctum"):
+                    st.write(f"Banish **{tome}**?")
+                    st.caption(
+                        "Burn this grimoire, erasing all its sacred rule fragments from the archives forever."
+                    )
+                    if st.button(
+                        "Confirm Banish",
+                        key=f"del_{tome}",
+                        type="primary",
+                        width="stretch",
+                    ):
+                        if remove_tome_from_sanctum(tome):
+                            st.toast(
+                                f"'{tome}' has been banished. Its verses are reduced to ash.",
+                                icon="🔥",
+                            )
+                            st.rerun()
+                        else:
+                            st.error(f"Failed to banish '{tome}' from the archives.")
+    else:
+        st.divider()
+        st.caption("No grimoires currently inscribed in Sanctum.")
 
 
 def build_sidebar():
@@ -307,7 +370,9 @@ def build_sidebar():
             selected_count = len(current_tomes)
             total_count = len(st.session_state.indexed_tomes)
             if selected_count == 0:
-                st.caption("⚠️ *No scriptures selected (Oracle cannot consult empty tomes).*")
+                st.caption(
+                    "⚠️ *No scriptures selected (Oracle cannot consult empty tomes).*"
+                )
             elif selected_count == total_count:
                 st.caption(f"✨ *All {selected_count} scriptures active.*")
             else:
@@ -478,10 +543,14 @@ def build_ui():
             model_used = response.model or "Sacred Archive"
             st.caption(f"🕯️ Channeled through the ethereal essence of: `{model_used}`")
 
-        citations_data = [
-            c.model_dump() if hasattr(c, "model_dump") else c
-            for c in response.citations
-        ] if response.citations else []
+        citations_data = (
+            [
+                c.model_dump() if hasattr(c, "model_dump") else c
+                for c in response.citations
+            ]
+            if response.citations
+            else []
+        )
 
         current_chat_history.append(
             {

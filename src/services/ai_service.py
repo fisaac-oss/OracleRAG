@@ -81,6 +81,13 @@ class AIService:
         except Exception:
             return []
 
+    def delete_rulebook(self, filename: str) -> bool:
+        """Deletes a rulebook and all its chunks from persistent ChromaDB vector storage."""
+        try:
+            return self._get_rag().delete_rulebook(filename)
+        except Exception:
+            return False
+
     def process_message(
         self,
         user_message: str,
@@ -270,3 +277,11 @@ def get_active_tomes(service: Optional[AIService] = None) -> list[str]:
     """
     active_service = service or AIService()
     return active_service.get_indexed_tomes()
+
+
+def delete_rulebook_file(filename: str, service: Optional[AIService] = None) -> bool:
+    """
+    Service entry point for deleting a rulebook from ChromaDB vector store.
+    """
+    active_service = service or AIService()
+    return active_service.delete_rulebook(filename)
