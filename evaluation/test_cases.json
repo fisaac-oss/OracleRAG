@@ -25,7 +25,7 @@
       "Player's Handbook.pdf"
     ],
     "input": "What happens when a character drops to 0 hit points?",
-    "expected_behavior": "States the rules for 0 HP (unconscious condition, death saving throws, instant death) as written in the Player's Handbook. Cites the relevant section and does not add mechanics from other systems (e.g. Witcher critical wounds or Fate consequences).",
+    "expected_behavior": "States the rules for 0 HP (unconscious condition, death saving throws, instant death) as written in the Player's Handbook. Cites the relevant section and does not add mechanics from other systems (e.g. Call of Cthulhu major wounds or Pathfinder 2e dying/wounded conditions).",
     "expected_citation_keywords": [
       "0 hit points",
       "death saving throw"
@@ -59,7 +59,7 @@
       "Player's Handbook.pdf"
     ],
     "input": "What actions can I take on my turn in combat?",
-    "expected_behavior": "Lists the standard combat actions named in the Player's Handbook (Attack, Cast a Spell, Dash, Disengage, Dodge, Help, Hide, Ready, Search, Use an Object) without inventing extra ones or mixing in Fate approaches or Witcher fast/strong strikes. Concise with citations.",
+    "expected_behavior": "Lists the standard combat actions named in the Player's Handbook (Attack, Cast a Spell, Dash, Disengage, Dodge, Help, Hide, Ready, Search, Use an Object) without inventing extra ones or mixing in Pathfinder 2e 3-action economy or Call of Cthulhu combat rules. Concise with citations.",
     "expected_citation_keywords": [
       "action",
       "Dash",
@@ -89,20 +89,15 @@
     "id": "case-06",
     "category": "successful_case",
     "test_type": "system_isolated",
-    "target_system": "Fate Accelerated",
+    "target_system": "Pathfinder 2e",
     "selected_tomes": [
-      "Fate_Accelerated_Edition_Electronic.pdf"
+      "Pathfinder 2e - Player Core 2.pdf"
     ],
-    "input": "How do Approaches work when taking an action?",
-    "expected_behavior": "Explains the six Approaches in Fate Accelerated (Careful, Clever, Flashy, Forceful, Quick, Sneaky) and how a player picks the approach matching how their character acts rather than what skill they use. Cites Fate Accelerated correctly.",
+    "input": "How does Quick Alchemy work for an Alchemist?",
+    "expected_behavior": "Explains that an Alchemist uses Quick Alchemy to create a temporary alchemical consumable item on the fly using versatile vials or infused reagents as a single action. Grounded strictly in Pathfinder 2e Player Core 2 with citations.",
     "expected_citation_keywords": [
-      "Approach",
-      "Careful",
-      "Clever",
-      "Flashy",
-      "Forceful",
-      "Quick",
-      "Sneaky"
+      "Quick Alchemy",
+      "Alchemist"
     ],
     "actual_result": "",
     "status": "pending"
@@ -111,21 +106,56 @@
     "id": "case-07",
     "category": "successful_case",
     "test_type": "system_isolated",
-    "target_system": "The Witcher TTRPG",
+    "target_system": "Pathfinder 2e",
     "selected_tomes": [
-      "The Witcher Pen & Paper RPG.pdf"
+      "Pathfinder 2e - Player Core 2.pdf"
     ],
-    "input": "How do Fast and Strong melee attacks differ?",
-    "expected_behavior": "Explains the difference between Fast Strikes (two attacks at no penalty) and Strong Strikes (single attack with -3 penalty dealing double damage), citing The Witcher Pen & Paper RPG. Must not mention D&D extra attack mechanics.",
+    "input": "How does a Swashbuckler gain Panache during combat?",
+    "expected_behavior": "Explains that a Swashbuckler gains Panache by successfully performing actions with flair (such as Tumble Through or style-specific skill actions like Bon Mot, Demoralize, or Feint) or rolling a critical success. Cites Pathfinder 2e Player Core 2 accurately.",
     "expected_citation_keywords": [
-      "Fast Strike",
-      "Strong Strike"
+      "Panache",
+      "Swashbuckler"
     ],
     "actual_result": "",
     "status": "pending"
   },
   {
     "id": "case-08",
+    "category": "successful_case",
+    "test_type": "system_isolated",
+    "target_system": "Call of Cthulhu 7th Edition",
+    "selected_tomes": [
+      "Call_of_Cthulhu_Investigator_Handbook_7th_Edition.pdf"
+    ],
+    "input": "How does pushing a skill roll work?",
+    "expected_behavior": "Explains that after failing a skill roll, an investigator can push the roll by justifying how they spend extra time/effort or take a bigger risk to try again; if they fail a pushed roll, the Keeper imposes severe consequences. Cites Call of Cthulhu Investigator Handbook 7th Edition.",
+    "expected_citation_keywords": [
+      "push",
+      "pushed"
+    ],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-09",
+    "category": "successful_case",
+    "test_type": "system_isolated",
+    "target_system": "Call of Cthulhu 7th Edition",
+    "selected_tomes": [
+      "Call_of_Cthulhu_Investigator_Handbook_7th_Edition.pdf"
+    ],
+    "input": "How do Regular, Hard, and Extreme successes work on a percentile dice roll?",
+    "expected_behavior": "Explains the d100 skill thresholds: rolling under or equal to the skill is a Regular success, under or equal to half is a Hard success, and under or equal to one-fifth is an Extreme success. Grounded in Call of Cthulhu Investigator Handbook 7th Edition.",
+    "expected_citation_keywords": [
+      "Hard",
+      "Extreme",
+      "percentile"
+    ],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-10",
     "category": "difficult_case",
     "test_type": "context_resolution",
     "target_system": "D&D 5e",
@@ -144,7 +174,7 @@
     "status": "pending"
   },
   {
-    "id": "case-09",
+    "id": "case-11",
     "category": "difficult_case",
     "test_type": "context_resolution",
     "target_system": "D&D 5e",
@@ -163,7 +193,7 @@
     "status": "pending"
   },
   {
-    "id": "case-10",
+    "id": "case-12",
     "category": "difficult_case",
     "test_type": "rule_synthesis",
     "target_system": "D&D 5e",
@@ -180,7 +210,7 @@
     "status": "pending"
   },
   {
-    "id": "case-11",
+    "id": "case-13",
     "category": "difficult_case",
     "test_type": "multi_condition",
     "target_system": "D&D 5e",
@@ -199,7 +229,7 @@
     "status": "pending"
   },
   {
-    "id": "case-12",
+    "id": "case-14",
     "category": "difficult_case",
     "test_type": "multi_step",
     "target_system": "D&D 5e",
@@ -217,7 +247,55 @@
     "status": "pending"
   },
   {
-    "id": "case-13",
+    "id": "case-15",
+    "category": "difficult_case",
+    "test_type": "cross_system_bleed",
+    "target_system": "Call of Cthulhu 7th Edition",
+    "selected_tomes": [
+      "Call_of_Cthulhu_Investigator_Handbook_7th_Edition.pdf"
+    ],
+    "input": "How do death saving throws work when my investigator reaches 0 hit points?",
+    "expected_behavior": "Anti-bleed test during a Call of Cthulhu session. Death saving throws do not exist in Call of Cthulhu 7e (it uses Major Wounds, unconsciousness, and dying rounds based on CON). Must NOT hallucinate D&D 5e death saving throw rules (3 successes/3 failures). Clarifies the Call of Cthulhu rule or states death saves do not exist.",
+    "expected_citation_keywords": [],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-16",
+    "category": "difficult_case",
+    "test_type": "cross_system_bleed",
+    "target_system": "Call of Cthulhu 7th Edition",
+    "selected_tomes": [
+      "Call_of_Cthulhu_Investigator_Handbook_7th_Edition.pdf"
+    ],
+    "input": "How does rolling with advantage or disadvantage work on an attack?",
+    "expected_behavior": "Anti-bleed test for Call of Cthulhu. Call of Cthulhu does not use rolling two d20s for advantage/disadvantage; it uses Bonus Dice and Penalty Dice (rolling an additional tens/percentile die). The model must explain Bonus/Penalty dice or state advantage is not a CoC mechanic, rather than reciting D&D 5e rules.",
+    "expected_citation_keywords": [
+      "bonus",
+      "penalty"
+    ],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-17",
+    "category": "difficult_case",
+    "test_type": "cross_system_bleed",
+    "target_system": "Pathfinder 2e",
+    "selected_tomes": [
+      "Pathfinder 2e - Player Core 2.pdf"
+    ],
+    "input": "How do Focus Spells and Focus Points work for classes in Player Core 2?",
+    "expected_behavior": "Anti-bleed test for Pathfinder 2e. Explains that Focus Spells are special class spells cast using Focus Points (refocused through 10-minute activities) rather than standard D&D 5e spell slots. Must not confuse them with D&D spell slot recovery or short rests.",
+    "expected_citation_keywords": [
+      "Focus",
+      "Spell"
+    ],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-18",
     "category": "difficult_case",
     "test_type": "edition_trap",
     "target_system": "D&D 5e",
@@ -231,108 +309,60 @@
     "status": "pending"
   },
   {
-    "id": "case-14",
-    "category": "difficult_case",
-    "test_type": "cross_system_bleed",
-    "target_system": "The Witcher TTRPG",
-    "selected_tomes": [
-      "The Witcher Pen & Paper RPG.pdf"
-    ],
-    "input": "How does a critical hit or critical success work during an attack roll?",
-    "expected_behavior": "Anti-bleed test during a Witcher session. Must explain The Witcher TTRPG's exploding d10 mechanic (rolling a 10 explodes and adds another roll) and critical wounds if beating defense by 7+. Must NOT cite D&D 5e natural 20 rules, double damage dice, or general D&D knowledge.",
-    "expected_citation_keywords": [
-      "critical",
-      "wound",
-      "explode"
-    ],
-    "actual_result": "",
-    "status": "pending"
-  },
-  {
-    "id": "case-15",
-    "category": "difficult_case",
-    "test_type": "cross_system_bleed",
-    "target_system": "Fate Accelerated",
-    "selected_tomes": [
-      "Fate_Accelerated_Edition_Electronic.pdf"
-    ],
-    "input": "How do I calculate damage taken when an enemy succeeds on an attack against me?",
-    "expected_behavior": "Anti-bleed test during a Fate session. Must explain Fate shifts of stress and absorbing hits via Stress boxes and Consequences (Mild, Moderate, Severe). Must NOT mention Hit Points (HP), rolling damage dice, or D&D damage types/resting mechanics.",
-    "expected_citation_keywords": [
-      "stress",
-      "consequence",
-      "shift"
-    ],
-    "actual_result": "",
-    "status": "pending"
-  },
-  {
-    "id": "case-16",
-    "category": "difficult_case",
-    "test_type": "non_existent_mechanic",
-    "target_system": "Fate Accelerated",
-    "selected_tomes": [
-      "Fate_Accelerated_Edition_Electronic.pdf"
-    ],
-    "input": "How do death saving throws work when my character is knocked unconscious?",
-    "expected_behavior": "Negative test in a Fate session: Death saving throws do not exist in Fate Accelerated. The Oracle must clarify that Fate uses 'Taken Out' or concessions instead of death saves, or return the scriptures fallback message. Must NOT hallucinate 5e death saving throw rules into Fate.",
-    "expected_citation_keywords": [],
-    "actual_result": "",
-    "status": "pending"
-  },
-  {
-    "id": "case-17",
-    "category": "difficult_case",
-    "test_type": "boundary_multi_system_stress",
-    "target_system": "D&D 5e + The Witcher (Multi-Tome)",
-    "selected_tomes": [
-      "Player's Handbook.pdf",
-      "The Witcher Pen & Paper RPG.pdf"
-    ],
-    "input": "How does rolling for initiative work at the start of combat?",
-    "expected_behavior": "Boundary stress test (Out-of-Domain): Two conflicting RPG systems selected simultaneously. Probes whether RAG retriever and model confuse or blend conflicting initiative mechanics (1d20 + Dex in D&D vs 1d10 + REF + Fast Reflexes in Witcher). Used to evaluate and document multi-system collision limitations.",
-    "expected_citation_keywords": [
-      "initiative"
-    ],
-    "actual_result": "",
-    "status": "pending"
-  },
-  {
-    "id": "case-18",
-    "category": "difficult_case",
-    "test_type": "boundary_multi_system_stress",
-    "target_system": "D&D 5e + Fate Accelerated (Multi-Tome)",
-    "selected_tomes": [
-      "Player's Handbook.pdf",
-      "Fate_Accelerated_Edition_Electronic.pdf"
-    ],
-    "input": "How does my character recover after taking heavy damage in combat?",
-    "expected_behavior": "Boundary stress test (Out-of-Domain): Two fundamentally incompatible damage philosophies selected simultaneously (HP/Resting in D&D vs Stress/Consequences recovery in Fate). Tests whether the model produces an incoherent hybrid answer or arbitrarily favors one system. Findings will be documented under Known Limitations.",
-    "expected_citation_keywords": [],
-    "actual_result": "",
-    "status": "pending"
-  },
-  {
     "id": "case-19",
     "category": "difficult_case",
     "test_type": "boundary_multi_system_stress",
-    "target_system": "All Indexed Systems (D&D + Fate + Witcher)",
+    "target_system": "D&D 5e + Call of Cthulhu (Multi-Tome)",
     "selected_tomes": [
       "Player's Handbook.pdf",
-      "Fate_Accelerated_Edition_Electronic.pdf",
-      "The Witcher Pen & Paper RPG.pdf"
+      "Call_of_Cthulhu_Investigator_Handbook_7th_Edition.pdf"
     ],
-    "input": "How does casting Signs using Vigor work?",
-    "expected_behavior": "Boundary noise test (Out-of-Domain): All three tomes selected simultaneously for a system-specific question (Witcher Signs/Vigor). Tests whether the RAG retriever can isolate relevant Witcher chunks without distraction from false-positive chunks in D&D spells or Fate stunts under high noise conditions.",
+    "input": "What happens when my character reaches 0 hit points in combat?",
+    "expected_behavior": "Boundary stress test (Out-of-Domain): Two conflicting RPG systems selected simultaneously. D&D 5e uses unconsciousness and 3 death saving throws, while Call of Cthulhu uses Major Wounds and dying rounds. Probes whether the RAG retriever and model blend conflicting 0 HP rules or arbitrarily favor one system. Findings documented under Known Limitations.",
     "expected_citation_keywords": [
-      "Sign",
-      "Vigor"
+      "hit points"
     ],
     "actual_result": "",
     "status": "pending"
   },
   {
     "id": "case-20",
+    "category": "difficult_case",
+    "test_type": "boundary_multi_system_stress",
+    "target_system": "D&D 5e + Pathfinder 2e (Multi-Tome)",
+    "selected_tomes": [
+      "Player's Handbook.pdf",
+      "Pathfinder 2e - Player Core 2.pdf"
+    ],
+    "input": "What class features does a Barbarian get when they enter a Rage?",
+    "expected_behavior": "Boundary stress test (Out-of-Domain): Both systems feature a Barbarian class with Rage, but have different mechanical implementations (D&D 5e advantage on Str checks, rage damage bonus, resistance to bludgeoning/piercing/slashing vs PF2e Player Core 2 temp HP, rage damage, -1 AC, and rage actions). Tests how the model handles shared class names across active tomes.",
+    "expected_citation_keywords": [
+      "Rage",
+      "Barbarian"
+    ],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-21",
+    "category": "difficult_case",
+    "test_type": "boundary_multi_system_stress",
+    "target_system": "All 3 Systems (D&D 5e + PF2e + CoC 7e)",
+    "selected_tomes": [
+      "Player's Handbook.pdf",
+      "Pathfinder 2e - Player Core 2.pdf",
+      "Call_of_Cthulhu_Investigator_Handbook_7th_Edition.pdf"
+    ],
+    "input": "How does an Investigator uncover clues or analyze a situation?",
+    "expected_behavior": "Boundary noise test (Out-of-Domain): The term 'Investigator' is both a full class in PF2e Player Core 2 (Devise a Stratagem, Clue In) and the default player character title in Call of Cthulhu. Probes how retriever semantic search handles term collisions across all 3 indexed tomes.",
+    "expected_citation_keywords": [
+      "Investigator"
+    ],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-22",
     "category": "failure_case",
     "test_type": "out_of_scope",
     "target_system": "None",
@@ -344,19 +374,19 @@
     "status": "pending"
   },
   {
-    "id": "case-21",
+    "id": "case-23",
     "category": "failure_case",
     "test_type": "unindexed_system",
-    "target_system": "Pathfinder 2e",
+    "target_system": "Cyberpunk RED",
     "selected_tomes": null,
-    "input": "How do I build a Pathfinder 2e alchemist?",
-    "expected_behavior": "Rules not present in the indexed tomes. Fallback message: 'The consulted scriptures contain no decrees regarding this matter.' with NO citations. Must not apply or hallucinate rules from unindexed systems.",
+    "input": "How does netrunning work in the NET architecture with cyberdecks?",
+    "expected_behavior": "Rules not present in the indexed tomes. Fallback message: 'The consulted scriptures contain no decrees regarding this matter.' with NO citations. Must not apply or hallucinate rules from unindexed systems like Cyberpunk.",
     "expected_fallback": true,
     "actual_result": "",
     "status": "pending"
   },
   {
-    "id": "case-22",
+    "id": "case-24",
     "category": "failure_case",
     "test_type": "prompt_injection",
     "target_system": "None",
@@ -368,19 +398,7 @@
     "status": "pending"
   },
   {
-    "id": "case-23",
-    "category": "failure_case",
-    "test_type": "out_of_scope",
-    "target_system": "None",
-    "selected_tomes": null,
-    "input": "What is the capital of France?",
-    "expected_behavior": "Non-TTRPG question. Fallback message: 'The consulted scriptures contain no decrees regarding this matter.' with NO citations. Does not answer from general knowledge.",
-    "expected_fallback": true,
-    "actual_result": "",
-    "status": "pending"
-  },
-  {
-    "id": "case-24",
+    "id": "case-25",
     "category": "failure_case",
     "test_type": "input_validation",
     "target_system": "None",
@@ -392,7 +410,7 @@
     "status": "pending"
   },
   {
-    "id": "case-25",
+    "id": "case-26",
     "category": "failure_case",
     "test_type": "input_validation",
     "target_system": "None",
@@ -404,7 +422,7 @@
     "status": "pending"
   },
   {
-    "id": "case-26",
+    "id": "case-27",
     "category": "failure_case",
     "test_type": "guardrail_no_tomes",
     "target_system": "D&D 5e",
