@@ -282,6 +282,57 @@
   },
   {
     "id": "case-17",
+    "category": "difficult_case",
+    "test_type": "boundary_multi_system_stress",
+    "target_system": "D&D 5e + The Witcher (Multi-Tome)",
+    "selected_tomes": [
+      "Player's Handbook.pdf",
+      "The Witcher Pen & Paper RPG.pdf"
+    ],
+    "input": "How does rolling for initiative work at the start of combat?",
+    "expected_behavior": "Boundary stress test (Out-of-Domain): Two conflicting RPG systems selected simultaneously. Probes whether RAG retriever and model confuse or blend conflicting initiative mechanics (1d20 + Dex in D&D vs 1d10 + REF + Fast Reflexes in Witcher). Used to evaluate and document multi-system collision limitations.",
+    "expected_citation_keywords": [
+      "initiative"
+    ],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-18",
+    "category": "difficult_case",
+    "test_type": "boundary_multi_system_stress",
+    "target_system": "D&D 5e + Fate Accelerated (Multi-Tome)",
+    "selected_tomes": [
+      "Player's Handbook.pdf",
+      "Fate_Accelerated_Edition_Electronic.pdf"
+    ],
+    "input": "How does my character recover after taking heavy damage in combat?",
+    "expected_behavior": "Boundary stress test (Out-of-Domain): Two fundamentally incompatible damage philosophies selected simultaneously (HP/Resting in D&D vs Stress/Consequences recovery in Fate). Tests whether the model produces an incoherent hybrid answer or arbitrarily favors one system. Findings will be documented under Known Limitations.",
+    "expected_citation_keywords": [],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-19",
+    "category": "difficult_case",
+    "test_type": "boundary_multi_system_stress",
+    "target_system": "All Indexed Systems (D&D + Fate + Witcher)",
+    "selected_tomes": [
+      "Player's Handbook.pdf",
+      "Fate_Accelerated_Edition_Electronic.pdf",
+      "The Witcher Pen & Paper RPG.pdf"
+    ],
+    "input": "How does casting Signs using Vigor work?",
+    "expected_behavior": "Boundary noise test (Out-of-Domain): All three tomes selected simultaneously for a system-specific question (Witcher Signs/Vigor). Tests whether the RAG retriever can isolate relevant Witcher chunks without distraction from false-positive chunks in D&D spells or Fate stunts under high noise conditions.",
+    "expected_citation_keywords": [
+      "Sign",
+      "Vigor"
+    ],
+    "actual_result": "",
+    "status": "pending"
+  },
+  {
+    "id": "case-20",
     "category": "failure_case",
     "test_type": "out_of_scope",
     "target_system": "None",
@@ -293,7 +344,7 @@
     "status": "pending"
   },
   {
-    "id": "case-18",
+    "id": "case-21",
     "category": "failure_case",
     "test_type": "unindexed_system",
     "target_system": "Pathfinder 2e",
@@ -305,7 +356,7 @@
     "status": "pending"
   },
   {
-    "id": "case-19",
+    "id": "case-22",
     "category": "failure_case",
     "test_type": "prompt_injection",
     "target_system": "None",
@@ -317,7 +368,7 @@
     "status": "pending"
   },
   {
-    "id": "case-20",
+    "id": "case-23",
     "category": "failure_case",
     "test_type": "out_of_scope",
     "target_system": "None",
@@ -329,7 +380,7 @@
     "status": "pending"
   },
   {
-    "id": "case-21",
+    "id": "case-24",
     "category": "failure_case",
     "test_type": "input_validation",
     "target_system": "None",
@@ -341,7 +392,7 @@
     "status": "pending"
   },
   {
-    "id": "case-22",
+    "id": "case-25",
     "category": "failure_case",
     "test_type": "input_validation",
     "target_system": "None",
@@ -353,14 +404,13 @@
     "status": "pending"
   },
   {
-    "id": "case-23",
+    "id": "case-26",
     "category": "failure_case",
     "test_type": "guardrail_no_tomes",
     "target_system": "D&D 5e",
     "selected_tomes": [],
     "input": "How does grappling work?",
     "expected_behavior": "With rulebooks indexed but the user has deselected every tome (selected_tomes = []), returns the 'No grimoires or scriptures have been selected' guardrail message and no citations.",
-    "selected_tomes": [],
     "expected_fallback": true,
     "actual_result": "",
     "status": "pending"
