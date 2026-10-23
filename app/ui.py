@@ -1,3 +1,4 @@
+from src.capabilities.memory import ConversationMemory
 import random
 import threading
 import uuid
@@ -421,6 +422,9 @@ def build_ui():
     # 1. Initialize state BEFORE building sidebar
     if "chats" not in st.session_state:
         st.session_state.chats = {}
+   
+    if "conversation_memories" not in st.session_state:
+        st.session_state.conversation_memories = {}
 
     if "indexed_tomes" not in st.session_state:
         st.session_state.indexed_tomes = get_active_tomes()
@@ -467,6 +471,14 @@ def build_ui():
     build_sidebar()
 
     current_chat_history = st.session_state.chats[st.session_state.current_chat_id]
+    current_chat_id = st.session_state.current_chat_id
+
+    if current_chat_id not in st.session_state.conversation_memories:
+        st.session_state.conversation_memories[current_chat_id] = ConversationMemory(
+            max_turns=3
+        )
+
+    conversation_memory = st.session_state.conversation_memories[current_chat_id]
 
     selected_prompt = None
 
@@ -525,19 +537,13 @@ def build_ui():
 
         # 2. Oracle response
         with st.spinner("Consulting the ancient scriptures..."):
-            response = generate_response(
-    prompt,
-    selected_tomes=get_current_chat_tomes(),
-    history=[
-        {
-            "user": current_chat_history[i]["content"],
-            "assistant": current_chat_history[i + 1]["content"],
-        }
-        for i in range(0, len(current_chat_history) - 1, 2)
-        if current_chat_history[i]["role"] == "user"
-        and current_chat_history[i + 1]["role"] == "assistant"
-    ][-3:],
-)
+            
+         response = generate_response(
+             prompt,
+             selected_tomes=get_current_chat_tomes(),
+             history=conversation_memory.get_history(),
+        )
+
 
         with st.chat_message("assistant", avatar="🔮"):
             st.markdown(response.content)
@@ -569,6 +575,8 @@ def build_ui():
                 "citations": citations_data,
             }
         )
+        
+        conversation_memory.add_turn(prompt, response.content)
 
         # Rerun to update sidebar title if it's the first exchange
         if len(current_chat_history) == 2:

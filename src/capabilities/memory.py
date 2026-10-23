@@ -6,6 +6,8 @@ class ConversationMemory:
     """Keep a limited number of recent user/assistant turns."""
 
     def __init__(self, max_turns: int = 3):
+        if max_turns < 1:
+            raise ValueError("max_turns must be at least 1")
         self.max_turns = max_turns
         self._history = deque(maxlen=max_turns)
 
