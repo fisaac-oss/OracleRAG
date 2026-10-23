@@ -35,19 +35,30 @@ class OllamaModelClient:
         # Timeout prevents a stalled generation from blocking the caller forever
         self._client = ollama.Client(host=self.base_url, timeout=config.ollama_timeout)
 
-    def generate(self, prompt: str, temperature: Optional[float] = None) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system: Optional[str] = None,
+        temperature: Optional[float] = None,
+    ) -> str:
         """
         Sends a user prompt to local Ollama model and returns generated response text.
+        Optionally accepts a system prompt to send as a native system message.
         
         Raises ModelClientError subclass if connection or execution fails.
         """
         temp = self.temperature if temperature is None else temperature
         options = {"temperature": temp}
 
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
         try:
             response = self._client.chat(
                 model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 options=options,
             )
             

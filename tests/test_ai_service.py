@@ -120,7 +120,7 @@ def test_rag_grounded_prompt_and_citations():
     assert response.citations[0].page == 195
     # Verify model was called with the grounded prompt
     generated_prompt = mock_client.generate.call_args[0][0]
-    assert "SACRED RULE EXCERPTS" in generated_prompt
+    assert "RULE EXCERPTS" in generated_prompt
     assert "PHB.pdf" in generated_prompt
     assert "How do I grapple?" in generated_prompt
 
@@ -482,8 +482,9 @@ def test_conversation_history_is_included_in_prompt():
 
     prompt_sent = mock_client.generate.call_args.args[0]
     assert "How does grappling work?" in prompt_sent
-    assert "It involves an Athletics check." in prompt_sent
     assert "What about escaping?" in prompt_sent
+    # Pattern B excludes prior assistant answers to avoid self-poisoning
+    assert "It involves an Athletics check." not in prompt_sent
 
 
 def test_conversation_history_is_included_without_rule_excerpts():
@@ -514,8 +515,9 @@ def test_conversation_history_is_included_without_rule_excerpts():
     prompt_sent = mock_client.generate.call_args.args[0]
 
     assert "How does grappling work?" in prompt_sent
-    assert "The target is grappled." in prompt_sent
     assert "How do I escape?" in prompt_sent
+    # Pattern B excludes prior assistant answers to avoid self-poisoning
+    assert "The target is grappled." not in prompt_sent
 
 
 
@@ -547,3 +549,26 @@ def test_conversation_history_is_used_for_rag_retrieval():
 
     assert "How does grappling work?" in retrieval_query
     assert "What about escaping?" in retrieval_query
+
+def test_model_client_system_prompt_handling():
+    """Verify that OllamaModelClient properly passes native system messages when system prompt is provided."""
+    from unittest.mock import patch
+    from src.models.model_client import OllamaModelClient
+
+    with patch("ollama.Client") as mock_ollama_client_cls:
+        mock_instance = MagicMock()
+        mock_instance.chat.return_value = {"message": {"content": "Verdict"}}
+        mock_ollama_client_cls.return_value = mock_instance
+
+        client = OllamaModelClient(model_name="test_model")
+        client.generate("User query", system="System directive")
+
+        mock_instance.chat.assert_called_with(
+            model="test_model",
+            messages=[
+                {"role": "system", "content": "System directive"},
+                {"role": "user", "content": "User query"},
+            ],
+            options={"temperature": config.model_temperature},
+        )
+

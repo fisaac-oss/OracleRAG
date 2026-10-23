@@ -1,34 +1,52 @@
+import argparse
+import copy
 import json
 import sys
+import time
 from pathlib import Path
 
-# Ensure project root is on sys.path
+# Ensure project root is on sys.path and console handles UTF-8 output on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.config import config
 from src.services.ai_service import AIService
 
 TEST_PATH = Path(__file__).resolve().parent / "test_cases.json"
 
 
-def save_cases(cases):
-    """Writes the current case results back to test_cases.json."""
-    with open(TEST_PATH, "w", encoding="utf-8") as f:
+def save_cases(cases, output_path: Path = TEST_PATH):
+    """Writes the current case results to output_path."""
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(cases, f, indent=2, ensure_ascii=False)
 
 
-def evaluate_rpg_systems():
+def evaluate_rpg_systems(input_path: Path = TEST_PATH, output_path: Path = TEST_PATH):
     """
-    Executes each test case from evaluation/test_cases.json through AIService,
-    records actual_result, citations, and prints progress to the console.
+    Executes each test case from input_path through AIService,
+    records actual_result, citations, latency, and saves results to output_path.
     """
-    print(f"Loading test cases from: {TEST_PATH}")
-    with open(TEST_PATH, "r", encoding="utf-8") as f:
-        cases = json.load(f)
+    print(f"Loading test cases from: {input_path}")
+    with open(input_path, "r", encoding="utf-8") as f:
+        raw_cases = json.load(f)
+
+    cases = copy.deepcopy(raw_cases)
+    if output_path.resolve() != input_path.resolve():
+        for c in cases:
+            c.pop("review_notes", None)
 
     service = AIService()
+    indexed_tomes = service.get_indexed_tomes()
     total = len(cases)
+    print(
+        f"Configuration: model={config.model_name}, temp={config.model_temperature}, "
+        f"timeout={config.ollama_timeout}s, similarity_threshold={config.similarity_threshold}"
+    )
+    print(f"Indexed tomes ({len(indexed_tomes)}): {indexed_tomes}")
     print(f"Starting evaluation of {total} test cases...\n" + "=" * 60)
 
     for idx, case in enumerate(cases, 1):
@@ -42,6 +60,7 @@ def evaluate_rpg_systems():
         if tomes is not None:
             print(f"      Selected Tomes: {tomes}")
 
+        t0 = time.perf_counter()
         try:
             # Handle conversational follow-ups if context is provided
             context = case.get("conversation_context")
@@ -68,8 +87,10 @@ def evaluate_rpg_systems():
                 user_message=message_to_send,
                 selected_tomes=tomes,
             )
+            elapsed = round(time.perf_counter() - t0, 2)
 
             case["actual_result"] = response.content
+            case["latency_seconds"] = elapsed
             case["citations"] = [
                 {
                     "source": c.source,
@@ -111,19 +132,38 @@ def evaluate_rpg_systems():
             else:
                 case["status"] = "review"
 
-            print(f"      -> Completed. Output preview: {response.content[:80].strip()}...\n")
+            print(
+                f"      -> Completed in {elapsed:.2f}s [{case['status']}]. "
+                f"Output preview: {response.content[:80].strip()}...\n"
+            )
 
         except Exception as err:
-            print(f"      -> ERROR: {err}\n")
+            elapsed = round(time.perf_counter() - t0, 2)
+            print(f"      -> ERROR after {elapsed:.2f}s: {err}\n")
             case["actual_result"] = f"Execution error: {err}"
+            case["latency_seconds"] = elapsed
             case["status"] = "fail"
 
         # Save after every case so progress survives an interrupted run
-        save_cases(cases)
+        save_cases(cases, output_path)
 
     print("=" * 60)
-    print(f"Evaluations complete! Results saved to {TEST_PATH}")
+    print(f"Evaluations complete! Results saved to {output_path}")
 
 
 if __name__ == "__main__":
-    evaluate_rpg_systems()
+    parser = argparse.ArgumentParser(description="Run Oracle RAG evaluation suite.")
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=TEST_PATH,
+        help="Path to input test cases JSON file.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=TEST_PATH,
+        help="Path to write evaluated test cases JSON file.",
+    )
+    args = parser.parse_args()
+    evaluate_rpg_systems(input_path=args.input, output_path=args.output)
