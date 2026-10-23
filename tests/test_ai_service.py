@@ -445,3 +445,43 @@ def test_delete_rulebook_ai_service():
     res_helper = delete_rulebook_file("custom_rules.pdf", service=service)
     assert res_helper is True
     mock_rag.delete_rulebook.assert_called_once_with("custom_rules.pdf")
+
+    
+def test_conversation_history_is_included_in_prompt():
+    """Verify that recent conversation history is passed into the model prompt."""
+    mock_client = MagicMock()
+    mock_client.model_name = "test_model"
+    mock_client.generate.return_value = "It uses an Athletics check."
+
+    mock_rag = MagicMock()
+    from src.schemas.responses import RuleCitation
+
+    mock_rag.get_indexed_tomes.return_value = ["PHB.pdf"]
+    mock_rag.retrieve_relevant_rules.return_value = [
+        RuleCitation(
+        source="PHB.pdf",
+        section="Combat > Grappling",
+        page=195,
+        text="Grappling involves an Athletics check.",
+        )
+    ]
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+
+    history = [
+        {
+            "user": "How does grappling work?",
+            "assistant": "It involves an Athletics check.",
+        }
+    ]
+
+    service.process_message(
+        "What about escaping?",
+        history=history,
+    )
+
+    prompt_sent = mock_client.generate.call_args.args[0]
+    assert "How does grappling work?" in prompt_sent
+    assert "It involves an Athletics check." in prompt_sent
+    assert "What about escaping?" in prompt_sent
+

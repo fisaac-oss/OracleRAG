@@ -526,9 +526,18 @@ def build_ui():
         # 2. Oracle response
         with st.spinner("Consulting the ancient scriptures..."):
             response = generate_response(
-                prompt,
-                selected_tomes=get_current_chat_tomes(),
-            )
+    prompt,
+    selected_tomes=get_current_chat_tomes(),
+    history=[
+        {
+            "user": current_chat_history[i]["content"],
+            "assistant": current_chat_history[i + 1]["content"],
+        }
+        for i in range(0, len(current_chat_history) - 1, 2)
+        if current_chat_history[i]["role"] == "user"
+        and current_chat_history[i + 1]["role"] == "assistant"
+    ][-3:],
+)
 
         with st.chat_message("assistant", avatar="🔮"):
             st.markdown(response.content)
