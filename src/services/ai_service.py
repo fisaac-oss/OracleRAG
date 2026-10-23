@@ -206,6 +206,12 @@ class AIService:
                     f"[{i+1}] Tome: {c.source} | Section: {c.section} | Page: {c.page or 'N/A'}\n{c.text}"
                     for i, c in enumerate(citations)
                 )
+                history_section = (
+                    f"--- RECENT CONVERSATION (for context only, not rules) ---\n"
+                    f"{history_context}\n\n"
+                    if history_context
+                    else ""
+                )
                 prompt_to_model = (
                     "You are an impartial, authoritative Tabletop RPG Rules Arbiter (The Oracle).\n"
                     "Answer the player's question using ONLY the fresh retrieved rule excerpts.\n"
@@ -222,7 +228,7 @@ class AIService:
                     "class or spell if the retrieved text is only a partial snippet.\n"
                     "Similar mechanics from other RPG systems are NOT support.\n\n"
                     f"--- SACRED RULE EXCERPTS ---\n{context_blocks}\n\n"
-                    f"--- RECENT CONVERSATION (for context only, not rules) ---\n{history_context}\n\n"
+                    f"{history_section}"
                     f"--- TRAVELER'S INQUIRY ---\n{request.message}\n\n"
                     "--- ARBITER'S VERDICT ---"
                 )
