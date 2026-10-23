@@ -2,11 +2,13 @@ import random
 import threading
 import uuid
 import streamlit as st
+from src.config import config
 from src.services.ai_service import (
     generate_response,
     ingest_rulebook_file,
     get_active_tomes,
     delete_rulebook_file,
+    get_available_models,
 )
 
 
@@ -328,6 +330,56 @@ def build_sidebar():
         if st.button(lib_label, width="stretch"):
             build_upload_dialog()
 
+        # Selection of Oracle Entity / Model
+        st.markdown("#### 🔮 Oracle Entity")
+        available_models = get_available_models()
+        configured_default = config.model_name
+        if not available_models:
+            available_models = [configured_default]
+        elif configured_default not in available_models:
+            available_models.insert(0, configured_default)
+
+        if "active_model" not in st.session_state:
+            st.session_state.active_model = configured_default
+
+        if st.session_state.active_model not in available_models:
+            st.session_state.active_model = available_models[0]
+
+        selected_model_idx = available_models.index(st.session_state.active_model)
+
+        def on_model_change():
+            st.session_state.active_model = st.session_state.oracle_model_selector
+
+        chosen_model = st.selectbox(
+            "Oracle Entity",
+            options=available_models,
+            index=selected_model_idx,
+            key="oracle_model_selector",
+            on_change=on_model_change,
+            label_visibility="collapsed",
+            help="Select the AI model channeled by the Oracle. Models like qwen3.5:4b engage in deep reasoning before delivering verdicts.",
+        )
+        st.session_state.active_model = chosen_model
+
+        is_thinking = any(
+            k in chosen_model.lower() for k in ["qwen3.5", "r1", "qwq", "reason"]
+        )
+        if is_thinking:
+            think_enabled = st.toggle(
+                "Deep Reasoning",
+                value=st.session_state.get("deep_reasoning_enabled", False),
+                key="deep_reasoning_toggle",
+                help="When enabled, the Oracle deliberates internally before formulating the verdict. Turn off for faster, direct answers (recommended for local execution).",
+            )
+            st.session_state.deep_reasoning_enabled = think_enabled
+            if think_enabled:
+                st.caption("🧠 *Deep deliberation active (shows chain of thought).*")
+            else:
+                st.caption("⚡ *Direct Mode active: fast, authoritative answers.*")
+        else:
+            st.caption("⚡ *Direct model active: fast response without chain-of-thought.*")
+            st.session_state.deep_reasoning_enabled = False
+
         # Selection of desired books to process in answer generation
         if st.session_state.get("indexed_tomes"):
             st.markdown("#### 📜 Active Scriptures")
@@ -495,6 +547,11 @@ def build_ui():
     for message in current_chat_history:
         avatar = "🧙" if message["role"] == "user" else "🔮"
         with st.chat_message(message["role"], avatar=avatar):
+            if message.get("thinking"):
+                with st.expander(
+                    "🔮 Oracle's Deliberation (Chain of Thought)", expanded=False
+                ):
+                    st.markdown(message["thinking"])
             st.markdown(message["content"])
             if message.get("citations"):
                 with st.expander(
@@ -524,13 +581,35 @@ def build_ui():
         current_chat_history.append({"role": "user", "content": prompt})
 
         # 2. Oracle response
-        with st.spinner("Consulting the ancient scriptures..."):
+        active_model = st.session_state.get("active_model", config.model_name)
+        is_thinking = any(
+            k in active_model.lower() for k in ["qwen3.5", "r1", "qwq", "reason"]
+        )
+        think_flag = (
+            st.session_state.get("deep_reasoning_enabled", False)
+            if is_thinking
+            else None
+        )
+        spinner_msg = (
+            "The Oracle is contemplating the ancient scriptures (Deep Reasoning)..."
+            if (is_thinking and think_flag is not False)
+            else "Consulting the ancient scriptures..."
+        )
+
+        with st.spinner(spinner_msg):
             response = generate_response(
                 prompt,
                 selected_tomes=get_current_chat_tomes(),
+                model_name=active_model,
+                think=think_flag,
             )
 
         with st.chat_message("assistant", avatar="🔮"):
+            if response.thinking:
+                with st.expander(
+                    "🔮 Oracle's Deliberation (Chain of Thought)", expanded=False
+                ):
+                    st.markdown(response.thinking)
             st.markdown(response.content)
             if response.citations:
                 with st.expander(
@@ -540,7 +619,7 @@ def build_ui():
                         page_str = f" | Page {c.page}" if c.page else ""
                         st.markdown(f"**{c.source}** — *{c.section}{page_str}*")
                         st.caption(c.text)
-            model_used = response.model or "Sacred Archive"
+            model_used = response.model or active_model
             st.caption(f"🕯️ Channeled through the ethereal essence of: `{model_used}`")
 
         citations_data = (
@@ -556,6 +635,7 @@ def build_ui():
             {
                 "role": "assistant",
                 "content": response.content,
+                "thinking": response.thinking,
                 "model": response.model,
                 "citations": citations_data,
             }

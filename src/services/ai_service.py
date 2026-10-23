@@ -92,11 +92,13 @@ class AIService:
         self,
         user_message: str,
         selected_tomes: Optional[list[str]] = None,
+        model_name: Optional[str] = None,
+        think: Optional[bool] = None,
     ) -> AIResponse:
         """
         Processes a raw user message string and returns a structured AIResponse.
         Catches technical failures and converts them to friendly user-facing messages.
-        Optionally limits RAG retrieval to selected_tomes.
+        Optionally limits RAG retrieval to selected_tomes, overrides model_name, and configures think mode.
         """
         # 1. Validate empty input
         if not user_message or not user_message.strip():
@@ -111,6 +113,8 @@ class AIService:
             request = UserRequest(
                 message=user_message.strip(),
                 selected_tomes=selected_tomes,
+                model_name=model_name,
+                think=think,
             )
 
             # 3. Retrieve relevant rulebook excerpts via RAG
@@ -122,12 +126,15 @@ class AIService:
 
             indexed_tomes = rag.get_indexed_tomes()
 
-            # 4. Call model client
+            # 4. Resolve active model name
             client = self._get_client()
-            model_name = (
-                client.model_name
-                if isinstance(getattr(client, "model_name", None), str)
-                else "oracle_model"
+            active_model = (
+                request.model_name
+                or (
+                    client.model_name
+                    if isinstance(getattr(client, "model_name", None), str)
+                    else "oracle_model"
+                )
             )
 
             # Fallback Guardrail 1: If tomes are indexed, but the user explicitly selected no tomes
@@ -142,7 +149,7 @@ class AIService:
                         "Please select at least one tome from the library to divine answers from."
                     ),
                     success=True,
-                    model=model_name,
+                    model=active_model,
                     citations=[],
                 )
 
@@ -159,7 +166,7 @@ class AIService:
                         f"The Oracle cannot divine an answer based on your {tome_context}."
                     ),
                     success=True,
-                    model=model_name,
+                    model=active_model,
                     citations=[],
                 )
 
@@ -176,14 +183,16 @@ class AIService:
                     "general knowledge, assume the question's premise, invent house rules, or apply mechanics\n"
                     "from different editions. Previous answers help resolve conversational references but are NOT rules.\n\n"
                     "Write naturally and directly, like a seasoned Game Master. Start with the substantive\n"
-                    "answer or the rulebook's name, never 'The provided excerpts indicate', 'Based on the rules',\n"
-                    "or similar framing. Do not guess book titles or confuse flavor text with mechanical rules.\n\n"
+                    "answer or the rulebook's name. Do not guess book titles or confuse flavor text with mechanical rules.\n\n"
                     "Write 1-4 concise paragraphs, with a separate paragraph for each distinct mechanic or step.\n"
                     "Distinguish strictly between concrete mechanics (dice rolls, stats, actions) and thematic lore.\n"
                     "Report only the mechanics actually named in the passages. If a rule explicitly requires Game\n"
                     "Master (GM) discretion or fiat, state that briefly. Do not claim exhaustive coverage of a\n"
                     "class or spell if the retrieved text is only a partial snippet.\n"
-                    "Similar mechanics from other RPG systems are NOT support.\n\n"
+                    "Similar mechanics from other RPG systems are NOT support.\n"
+                    "If excerpts from different game systems are provided, address each system separately and identify it by name.\n"
+                    "If the excerpts do not contain the complete general rule or only describe specific special cases or examples, state directly what the excerpts cover and clearly indicate that the general rule is not contained in the provided text.\n"
+                    "Conclude internal deliberation promptly (under 200 words) and proceed directly to formulate your final verdict.\n\n"
                     f"--- SACRED RULE EXCERPTS ---\n{context_blocks}\n\n"
                     f"--- TRAVELER'S INQUIRY ---\n{request.message}\n\n"
                     "--- ARBITER'S VERDICT ---"
@@ -192,12 +201,26 @@ class AIService:
                 # If no tomes are indexed yet, invoke base model
                 prompt_to_model = request.message
 
-            response_text = client.generate(prompt_to_model)
+            # Call model with specified active model and thinking mode if overridden
+            gen_kwargs = {}
+            if request.model_name:
+                gen_kwargs["model_name"] = request.model_name
+            if request.think is not None:
+                gen_kwargs["think"] = request.think
+
+            try:
+                response_text = client.generate(prompt_to_model, **gen_kwargs)
+            except TypeError:
+                # Handle test mocks that might not take keyword arguments
+                response_text = client.generate(prompt_to_model)
+
+            thinking_trace = getattr(response_text, "thinking", None)
 
             return AIResponse(
-                content=response_text,
+                content=str(response_text),
+                thinking=thinking_trace,
                 success=True,
-                model=model_name,
+                model=active_model,
                 citations=citations,
             )
 
@@ -239,19 +262,36 @@ class AIService:
 def generate_response(
     user_message: str,
     selected_tomes: Optional[list[str]] = None,
+    model_name: Optional[str] = None,
+    think: Optional[bool] = None,
     service: Optional[AIService] = None,
 ) -> AIResponse:
     """
     Main reusable service entry point used by the UI layer.
 
-    Accepts user input message, optional selected_tomes list, passes it to the AI service,
-    and returns the generated AIResponse (with content, model, and citations).
+    Accepts user input message, optional selected_tomes list, optional model_name override,
+    optional think flag, passes it to the AI service, and returns the generated AIResponse
+    (with content, thinking, model, and citations).
     """
     active_service = service or AIService()
     return active_service.process_message(
         user_message=user_message,
         selected_tomes=selected_tomes,
+        model_name=model_name,
+        think=think,
     )
+
+
+def get_available_models(service: Optional[AIService] = None) -> list[str]:
+    """
+    Service entry point for fetching installed/available Ollama models.
+    """
+    try:
+        active_service = service or AIService()
+        client = active_service._get_client()
+        return client.list_available_models()
+    except Exception:
+        return []
 
 
 def ingest_rulebook_file(

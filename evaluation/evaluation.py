@@ -12,7 +12,7 @@ from src.services.ai_service import AIService
 TEST_PATH = Path(__file__).resolve().parent / "test_cases.json"
 
 
-def evaluate_rpg_systems():
+def evaluate_rpg_systems(model_name: str | None = None):
     """
     Executes each test case from evaluation/test_cases.json through AIService,
     records actual_result, citations, and prints progress to the console.
@@ -21,7 +21,9 @@ def evaluate_rpg_systems():
     with open(TEST_PATH, "r", encoding="utf-8") as f:
         cases = json.load(f)
 
+    target_model = model_name or (sys.argv[1] if len(sys.argv) > 1 else None)
     service = AIService()
+    active_model = target_model or service._get_client().model_name
     total = len(cases)
     print(f"Starting evaluation of {total} test cases...\n" + "=" * 60)
 
@@ -61,9 +63,12 @@ def evaluate_rpg_systems():
             response = service.process_message(
                 user_message=message_to_send,
                 selected_tomes=tomes,
+                model_name=active_model,
             )
 
             case["actual_result"] = response.content
+            if response.thinking:
+                case["thinking"] = response.thinking
             case["citations"] = [
                 {"source": c.source, "section": c.section, "page": c.page}
                 for c in response.citations

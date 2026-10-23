@@ -445,3 +445,203 @@ def test_delete_rulebook_ai_service():
     res_helper = delete_rulebook_file("custom_rules.pdf", service=service)
     assert res_helper is True
     mock_rag.delete_rulebook.assert_called_once_with("custom_rules.pdf")
+
+
+def test_generation_result_string_compatibility():
+    """Verify GenerationResult behaves as a true string while carrying thinking metadata."""
+    from src.models.model_client import GenerationResult
+
+    res = GenerationResult("Arbiter's verdict.", thinking="Analyzed grappling rules.")
+    assert isinstance(res, str)
+    assert res == "Arbiter's verdict."
+    assert res.thinking == "Analyzed grappling rules."
+    assert len(res) == len("Arbiter's verdict.")
+
+
+def test_thinking_model_native_parsing():
+    """Verify OllamaModelClient extracts native thinking field from chat responses."""
+    from unittest.mock import patch
+    from src.models.model_client import OllamaModelClient
+
+    with patch("ollama.Client") as mock_ollama_client_cls:
+        mock_instance = MagicMock()
+        mock_instance.chat.return_value = {
+            "message": {
+                "content": "Grappling drops speed to zero.",
+                "thinking": "Step 1: Check conditions. Step 2: Conclude speed impact.",
+            }
+        }
+        mock_ollama_client_cls.return_value = mock_instance
+
+        client = OllamaModelClient(model_name="qwen3.5:4b")
+        res = client.generate("How does grapple work?")
+
+        assert res == "Grappling drops speed to zero."
+        assert res.thinking == "Step 1: Check conditions. Step 2: Conclude speed impact."
+
+
+def test_thinking_model_tag_fallback_parsing():
+    """Verify OllamaModelClient extracts <think> tags embedded in raw content text."""
+    from unittest.mock import patch
+    from src.models.model_client import OllamaModelClient
+
+    with patch("ollama.Client") as mock_ollama_client_cls:
+        mock_instance = MagicMock()
+        mock_instance.chat.return_value = {
+            "message": {
+                "content": "<think>Deliberating rules of cover vs hidden.</think>Cover is distinct from hidden.",
+            }
+        }
+        mock_ollama_client_cls.return_value = mock_instance
+
+        client = OllamaModelClient(model_name="deepseek-r1:7b")
+        res = client.generate("Cover vs hidden?")
+
+        assert res == "Cover is distinct from hidden."
+        assert res.thinking == "Deliberating rules of cover vs hidden."
+
+
+def test_process_message_with_thinking_trace():
+    """Verify AIService preserves thinking trace in AIResponse."""
+    from src.models.model_client import GenerationResult
+
+    mock_client = MagicMock()
+    mock_client.model_name = "qwen3.5:4b"
+    mock_client.generate.return_value = GenerationResult(
+        "Opportunity attack is allowed with disadvantage.",
+        thinking="Evaluating grappled, poisoned, frightened conditions.",
+    )
+    mock_rag = MagicMock(get_indexed_tomes=MagicMock(return_value=[]), retrieve_relevant_rules=MagicMock(return_value=[]))
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+    response = service.process_message("Can I make opportunity attack?")
+
+    assert response.success is True
+    assert response.content == "Opportunity attack is allowed with disadvantage."
+    assert response.thinking == "Evaluating grappled, poisoned, frightened conditions."
+    assert response.model == "qwen3.5:4b"
+
+
+def test_process_message_with_model_override():
+    """Verify process_message and generate_response support explicit model override."""
+    mock_client = MagicMock()
+    mock_client.model_name = "default_model"
+    mock_client.generate.return_value = "Answer from thinking model."
+    mock_rag = MagicMock(get_indexed_tomes=MagicMock(return_value=[]), retrieve_relevant_rules=MagicMock(return_value=[]))
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+    response = generate_response("Query", model_name="qwen3.5:4b", service=service)
+
+    assert response.success is True
+    assert response.model == "qwen3.5:4b"
+    mock_client.generate.assert_called_once_with("Query", model_name="qwen3.5:4b")
+
+
+def test_get_available_models_helper():
+    """Verify get_available_models helper delegates to model client."""
+    from src.services.ai_service import get_available_models
+
+    mock_client = MagicMock()
+    mock_client.list_available_models.return_value = ["llama3.2:3b", "qwen3.5:4b"]
+
+    service = AIService(model_client=mock_client)
+    models = get_available_models(service=service)
+
+    assert models == ["llama3.2:3b", "qwen3.5:4b"]
+    mock_client.list_available_models.assert_called_once()
+
+
+def test_thinking_model_options_budget():
+    """Verify thinking models receive expanded num_predict and num_ctx budgets to prevent truncation."""
+    from unittest.mock import patch
+    from src.models.model_client import OllamaModelClient
+
+    with patch("ollama.Client") as mock_ollama_client_cls:
+        mock_instance = MagicMock()
+        mock_instance.chat.return_value = {"message": {"content": "Result", "thinking": "Thoughts"}}
+        mock_ollama_client_cls.return_value = mock_instance
+
+        client = OllamaModelClient(model_name="qwen3.5:4b")
+        client.generate("Test prompt")
+
+        call_kwargs = mock_instance.chat.call_args[1]
+        options = call_kwargs["options"]
+        assert options["num_predict"] == 3072
+        assert options["num_ctx"] == 8192
+        assert options["temperature"] >= 0.6
+
+
+def test_thinking_model_empty_content_fallback():
+    """Verify that if output budget was exhausted during thinking, a descriptive message is returned."""
+    from unittest.mock import patch
+    from src.models.model_client import OllamaModelClient
+
+    with patch("ollama.Client") as mock_ollama_client_cls:
+        mock_instance = MagicMock()
+        # Model produced thoughts but ran out of tokens before content
+        mock_instance.chat.return_value = {"message": {"content": "", "thinking": "Incomplete thought trace..."}}
+        mock_ollama_client_cls.return_value = mock_instance
+
+        client = OllamaModelClient(model_name="qwen3.5:4b")
+        res = client.generate("Test prompt")
+
+        assert "maximum token capacity" in res
+        assert res.thinking == "Incomplete thought trace..."
+
+
+def test_model_client_think_parameter():
+    """Verify OllamaModelClient forwards explicit think=False/True parameter to ollama.chat."""
+    from unittest.mock import patch
+    from src.models.model_client import OllamaModelClient
+
+    with patch("ollama.Client") as mock_ollama_client_cls:
+        mock_instance = MagicMock()
+        mock_instance.chat.return_value = {"message": {"content": "Fast answer", "thinking": None}}
+        mock_ollama_client_cls.return_value = mock_instance
+
+        client = OllamaModelClient(model_name="qwen3.5:4b")
+        res = client.generate("When does critical hit occur?", think=False)
+
+        assert res == "Fast answer"
+        call_kwargs = mock_instance.chat.call_args[1]
+        assert call_kwargs.get("think") is False
+
+
+def test_thinking_model_auto_recovery():
+    """Verify that if tokens were exhausted during thinking, the client automatically recovers with a direct call."""
+    from unittest.mock import patch
+    from src.models.model_client import OllamaModelClient
+
+    with patch("ollama.Client") as mock_ollama_client_cls:
+        mock_instance = MagicMock()
+        # First call ran out of tokens while thinking; second direct call successfully returns verdict
+        mock_instance.chat.side_effect = [
+            {"message": {"content": "", "thinking": "Extensive thought trace about dice rolls..."}},
+            {"message": {"content": "A critical hit occurs on a roll of 20.", "thinking": None}},
+        ]
+        mock_ollama_client_cls.return_value = mock_instance
+
+        client = OllamaModelClient(model_name="qwen3.5:4b")
+        res = client.generate("When does a critical hit occur?")
+
+        assert res == "A critical hit occurs on a roll of 20."
+        assert res.thinking == "Extensive thought trace about dice rolls..."
+        assert mock_instance.chat.call_count == 2
+        # Second call should have think=False
+        second_call_kwargs = mock_instance.chat.call_args_list[1][1]
+        assert second_call_kwargs.get("think") is False
+
+
+def test_process_message_with_think_toggle():
+    """Verify AIService and generate_response forward the think flag."""
+    mock_client = MagicMock()
+    mock_client.model_name = "qwen3.5:4b"
+    mock_client.generate.return_value = "Quick response."
+    mock_rag = MagicMock(get_indexed_tomes=MagicMock(return_value=[]), retrieve_relevant_rules=MagicMock(return_value=[]))
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+    response = generate_response("Query", think=False, service=service)
+
+    assert response.success is True
+    assert response.content == "Quick response."
+    mock_client.generate.assert_called_once_with("Query", think=False)

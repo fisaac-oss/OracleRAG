@@ -9,6 +9,14 @@ class UserRequest(BaseModel):
         default=None,
         description="Optional list of specific book/file names to filter retrieval by.",
     )
+    model_name: str | None = Field(
+        default=None,
+        description="Optional model override to use for this request.",
+    )
+    think: bool | None = Field(
+        default=None,
+        description="Optional flag to explicitly enable or disable chain-of-thought thinking.",
+    )
 
 
 class RuleCitation(BaseModel):
@@ -26,6 +34,10 @@ class AIResponse(BaseModel):
     content: str = Field(
         ...,
         description="The generated response text or user-friendly error message.",
+    )
+    thinking: str | None = Field(
+        None,
+        description="The model's internal reasoning or chain-of-thought trace, if produced.",
     )
     success: bool = Field(True, description="Flag indicating if the operation succeeded.")
     error_message: str | None = Field(
