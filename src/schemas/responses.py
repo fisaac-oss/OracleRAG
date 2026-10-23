@@ -38,6 +38,10 @@ class AIResponse(BaseModel):
         default_factory=list,
         description="Rule citations used to formulate the response.",
     )
+    elapsed_time: float | None = Field(
+        default=None,
+        description="Time taken in seconds to produce the response.",
+    )
 
 
 class IngestionResponse(BaseModel):

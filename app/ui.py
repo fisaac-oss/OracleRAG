@@ -1,6 +1,7 @@
 from src.capabilities.memory import ConversationMemory
 import random
 import threading
+import time
 import uuid
 import streamlit as st
 from src.services.ai_service import (
@@ -522,6 +523,10 @@ def build_ui():
                 st.caption(
                     f"🕯️ Channeled through the ethereal essence of: `{message['model']}`"
                 )
+            if message.get("elapsed_time") is not None:
+                st.caption(
+                    f"⏱️ Time taken: `{message['elapsed_time']:.2f}s`"
+                )
 
     # Accept input from sticky bar or prompt pill
     user_input = st.chat_input(
@@ -537,13 +542,17 @@ def build_ui():
 
         # 2. Oracle response
         with st.spinner("Consulting the ancient scriptures..."):
-            
-         response = generate_response(
-             prompt,
-             selected_tomes=get_current_chat_tomes(),
-             history=conversation_memory.get_history(),
-        )
-
+            start_time = time.perf_counter()
+            response = generate_response(
+                prompt,
+                selected_tomes=get_current_chat_tomes(),
+                history=conversation_memory.get_history(),
+            )
+            elapsed_time = (
+                response.elapsed_time
+                if getattr(response, "elapsed_time", None) is not None
+                else round(time.perf_counter() - start_time, 2)
+            )
 
         with st.chat_message("assistant", avatar="🔮"):
             st.markdown(response.content)
@@ -557,6 +566,7 @@ def build_ui():
                         st.caption(c.text)
             model_used = response.model or "Sacred Archive"
             st.caption(f"🕯️ Channeled through the ethereal essence of: `{model_used}`")
+            st.caption(f"⏱️ Time taken: `{elapsed_time:.2f}s`")
 
         citations_data = (
             [
@@ -571,8 +581,9 @@ def build_ui():
             {
                 "role": "assistant",
                 "content": response.content,
-                "model": response.model,
+                "model": model_used,
                 "citations": citations_data,
+                "elapsed_time": elapsed_time,
             }
         )
         

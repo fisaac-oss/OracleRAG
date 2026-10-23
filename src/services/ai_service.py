@@ -1,3 +1,4 @@
+import time
 from typing import Optional, BinaryIO, Callable
 from src.models.model_client import (
     OllamaModelClient,
@@ -101,12 +102,15 @@ class AIService:
         Catches technical failures and converts them to friendly user-facing messages.
         Optionally limits RAG retrieval to selected_tomes.
         """
+        start_time = time.perf_counter()
+
         # 1. Validate empty input
         if not user_message or not user_message.strip():
             return AIResponse(
                 content="Please enter a message before sending.",
                 success=False,
                 error_message="User message was empty.",
+                elapsed_time=round(time.perf_counter() - start_time, 2),
             )
 
         try:
@@ -167,6 +171,7 @@ class AIService:
                     success=True,
                     model=model_name,
                     citations=[],
+                    elapsed_time=round(time.perf_counter() - start_time, 2),
                 )
 
             # Fallback Guardrail 2: If tomes are indexed/selected, but no rules matched the threshold
@@ -184,6 +189,7 @@ class AIService:
                     success=True,
                     model=model_name,
                     citations=[],
+                    elapsed_time=round(time.perf_counter() - start_time, 2),
                 )
 
             # 4. Construct grounded prompt if rulebook excerpts were found
@@ -240,6 +246,7 @@ class AIService:
                 success=True,
                 model=model_name,
                 citations=citations,
+                elapsed_time=round(time.perf_counter() - start_time, 2),
             )
 
         except OllamaConnectionError as err:
@@ -250,6 +257,7 @@ class AIService:
                 ),
                 success=False,
                 error_message=str(err),
+                elapsed_time=round(time.perf_counter() - start_time, 2),
             )
 
         except ModelNotFoundError as err:
@@ -260,6 +268,7 @@ class AIService:
                 ),
                 success=False,
                 error_message=str(err),
+                elapsed_time=round(time.perf_counter() - start_time, 2),
             )
 
         except ModelClientError as err:
@@ -267,6 +276,7 @@ class AIService:
                 content="[Error] An unexpected communication error occurred with the AI model.",
                 success=False,
                 error_message=str(err),
+                elapsed_time=round(time.perf_counter() - start_time, 2),
             )
 
         except Exception as err:
@@ -274,6 +284,7 @@ class AIService:
                 content="[Error] An unexpected application error occurred.",
                 success=False,
                 error_message=str(err),
+                elapsed_time=round(time.perf_counter() - start_time, 2),
             )
 
 

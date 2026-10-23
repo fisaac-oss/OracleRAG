@@ -50,6 +50,9 @@ def test_successful_response_generation():
 
     assert response.content == "Hello! I am an AI assistant."
     assert response.model == "test_model"
+    assert response.elapsed_time is not None
+    assert isinstance(response.elapsed_time, float)
+    assert response.elapsed_time >= 0.0
     mock_client.generate.assert_called_once_with("Hello, AI")
 
 
