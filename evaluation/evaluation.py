@@ -12,6 +12,12 @@ from src.services.ai_service import AIService
 TEST_PATH = Path(__file__).resolve().parent / "test_cases.json"
 
 
+def save_cases(cases):
+    """Writes the current case results back to test_cases.json."""
+    with open(TEST_PATH, "w", encoding="utf-8") as f:
+        json.dump(cases, f, indent=2, ensure_ascii=False)
+
+
 def evaluate_rpg_systems():
     """
     Executes each test case from evaluation/test_cases.json through AIService,
@@ -65,19 +71,45 @@ def evaluate_rpg_systems():
 
             case["actual_result"] = response.content
             case["citations"] = [
-                {"source": c.source, "section": c.section, "page": c.page}
+                {
+                    "source": c.source,
+                    "section": c.section,
+                    "page": c.page,
+                    "text": c.text,
+                }
                 for c in response.citations
             ]
 
-            # Automated preliminary status check
-            if case.get("expected_fallback") and "contain no decrees" in response.content:
-                case["status"] = "pass"
-            elif case.get("expected_error_message") and case["expected_error_message"] in response.content:
-                case["status"] = "pass"
-            elif response.success and response.content:
-                # Marked for human review, preliminary status can be 'review' or left for manual review
-                if case.get("status") == "pending":
-                    case["status"] = "review"
+            # Automated preliminary status check. Content remains available for
+            # human review when a rule requires more nuanced judgment.
+            result_text = response.content.lower()
+            citation_text = " ".join(c.text for c in response.citations).lower()
+            keywords = [k.lower() for k in case.get("expected_citation_keywords", [])]
+            expected_error = case.get("expected_error_message")
+
+            if expected_error:
+                case["status"] = (
+                    "pass" if expected_error.lower() in result_text else "fail"
+                )
+            elif case.get("expected_fallback"):
+                fallback_markers = (
+                    "contain no decrees",
+                    "no grimoires or scriptures have been selected",
+                )
+                case["status"] = (
+                    "pass"
+                    if not response.citations and any(m in result_text for m in fallback_markers)
+                    else "fail"
+                )
+            elif not response.success or not response.citations:
+                case["status"] = "fail"
+            elif keywords and not all(
+                keyword in citation_text or keyword in result_text
+                for keyword in keywords
+            ):
+                case["status"] = "partial"
+            else:
+                case["status"] = "review"
 
             print(f"      -> Completed. Output preview: {response.content[:80].strip()}...\n")
 
@@ -86,9 +118,8 @@ def evaluate_rpg_systems():
             case["actual_result"] = f"Execution error: {err}"
             case["status"] = "fail"
 
-    # Save results back to test_cases.json
-    with open(TEST_PATH, "w", encoding="utf-8") as f:
-        json.dump(cases, f, indent=2, ensure_ascii=False)
+        # Save after every case so progress survives an interrupted run
+        save_cases(cases)
 
     print("=" * 60)
     print(f"Evaluations complete! Results saved to {TEST_PATH}")
