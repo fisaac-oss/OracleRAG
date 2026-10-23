@@ -485,3 +485,34 @@ def test_conversation_history_is_included_in_prompt():
     assert "It involves an Athletics check." in prompt_sent
     assert "What about escaping?" in prompt_sent
 
+
+def test_conversation_history_is_included_without_rule_excerpts():
+    """Verify history is included when no rule excerpts are available."""
+    mock_client = MagicMock()
+    mock_client.model_name = "test_model"
+    mock_client.generate.return_value = "You can escape using an action."
+
+    mock_rag = MagicMock()
+    mock_rag.get_indexed_tomes.return_value = []
+    mock_rag.retrieve_relevant_rules.return_value = []
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+
+    history = [
+        {
+            "user": "How does grappling work?",
+            "assistant": "The target is grappled.",
+        }
+    ]
+
+    service.process_message(
+        "How do I escape?",
+        history=history,
+    )
+
+    assert mock_client.generate.called
+    prompt_sent = mock_client.generate.call_args.args[0]
+
+    assert "How does grappling work?" in prompt_sent
+    assert "The target is grappled." in prompt_sent
+    assert "How do I escape?" in prompt_sent

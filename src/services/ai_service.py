@@ -209,9 +209,17 @@ class AIService:
                     f"--- TRAVELER'S INQUIRY ---\n{request.message}\n\n"
                     "--- ARBITER'S VERDICT ---"
                 )
+            
             else:
-                # If no tomes are indexed yet, invoke base model
-                prompt_to_model = request.message
+                # If no tomes are indexed yet, invoke base model with recent conversation context
+                if history_context:
+                     prompt_to_model = (
+                         f"--- RECENT CONVERSATION (for context only) ---\n"
+                         f"{history_context}\n\n"
+                         f"--- TRAVELER'S INQUIRY ---\n{request.message}"
+                     )
+                else:
+                    prompt_to_model = request.message
 
             response_text = client.generate(prompt_to_model)
 
