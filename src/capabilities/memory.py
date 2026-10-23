@@ -1,25 +1,24 @@
-"""
-Optional project capability: Memory & Persistent Conversation State.
 
-Implement this module only if this capability is relevant to your application's
-user problem. Remove the file if the capability is not used.
+from collections import deque
 
-Conceptual Overview:
--------------------
-Memory enables an application to retain conversational context across multiple user interactions
-or persist state between user sessions.
 
-Key concepts when implementing memory:
-1. Short-term Memory (Chat History): Maintaining an ordered list of user and assistant
-   messages within the current session and appending them to model requests.
-2. Context Window Management: Truncating, summarizing, or pruning history when it exceeds
-   the model's maximum context length.
-3. Long-term / Persistent Memory: Storing user preferences, session history, or key facts
-   in local files or persistent state stores.
+class ConversationMemory:
+    """Keep a limited number of recent user/assistant turns."""
 
-Note:
------
-Keep memory implementations simple and relevant to the user's workflow needs.
-"""
+    def __init__(self, max_turns: int = 3):
+        if max_turns < 1:
+            raise ValueError("max_turns must be at least 1")
+        self.max_turns = max_turns
+        self._history = deque(maxlen=max_turns)
 
-# Implement custom conversation memory or state management below if selected.
+    def add_turn(self, user_message: str, assistant_response: str) -> None:
+        self._history.append({
+            "user": user_message,
+            "assistant": assistant_response,
+        })
+
+    def get_history(self) -> list[dict[str, str]]:
+        return list(self._history)
+
+    def clear(self) -> None:
+        self._history.clear()

@@ -88,11 +88,14 @@ class AIService:
         except Exception:
             return False
 
+    
     def process_message(
         self,
         user_message: str,
         selected_tomes: Optional[list[str]] = None,
+        history: Optional[list[dict[str, str]]] = None,
     ) -> AIResponse:
+
         """
         Processes a raw user message string and returns a structured AIResponse.
         Catches technical failures and converts them to friendly user-facing messages.
@@ -113,12 +116,46 @@ class AIService:
                 selected_tomes=selected_tomes,
             )
 
+            
+            # Format the last three conversation turns.
+            recent_history = (history or [])[-3:]
+
+            history_blocks = []
+            for turn in recent_history:
+                user_text = turn.get("user", "").strip()
+                assistant_text = turn.get("assistant", "").strip()
+
+                if user_text:
+                    history_blocks.append(f"Previous user question: {user_text}")
+                if assistant_text:
+                    history_blocks.append(f"Previous assistant answer: {assistant_text}")
+
+            history_context = "\n".join(history_blocks)
+
+
+            
             # 3. Retrieve relevant rulebook excerpts via RAG
             rag = self._get_rag()
+
+            retrieval_query = request.message
+            if history_context:
+                recent_user_messages = [
+                    turn["user"]
+                    for turn in (history or [])[-3:]
+                    if turn.get("user")
+                ]
+                if recent_user_messages:
+                    retrieval_query = (
+                        "\n".join(recent_user_messages)
+                        + "\n"
+                        + request.message
+                    )
+
             citations: list[RuleCitation] = rag.retrieve_relevant_rules(
-                request.message,
+                retrieval_query,
                 selected_tomes=request.selected_tomes,
             )
+
 
             indexed_tomes = rag.get_indexed_tomes()
 
@@ -169,6 +206,12 @@ class AIService:
                     f"[{i+1}] Tome: {c.source} | Section: {c.section} | Page: {c.page or 'N/A'}\n{c.text}"
                     for i, c in enumerate(citations)
                 )
+                history_section = (
+                    f"--- RECENT CONVERSATION (for context only, not rules) ---\n"
+                    f"{history_context}\n\n"
+                    if history_context
+                    else ""
+                )
                 prompt_to_model = (
                     "You are an impartial, authoritative Tabletop RPG Rules Arbiter (The Oracle).\n"
                     "Answer the player's question using ONLY the fresh retrieved rule excerpts.\n"
@@ -185,12 +228,21 @@ class AIService:
                     "class or spell if the retrieved text is only a partial snippet.\n"
                     "Similar mechanics from other RPG systems are NOT support.\n\n"
                     f"--- SACRED RULE EXCERPTS ---\n{context_blocks}\n\n"
+                    f"{history_section}"
                     f"--- TRAVELER'S INQUIRY ---\n{request.message}\n\n"
                     "--- ARBITER'S VERDICT ---"
                 )
+            
             else:
-                # If no tomes are indexed yet, invoke base model
-                prompt_to_model = request.message
+                # If no tomes are indexed yet, invoke base model with recent conversation context
+                if history_context:
+                     prompt_to_model = (
+                         f"--- RECENT CONVERSATION (for context only) ---\n"
+                         f"{history_context}\n\n"
+                         f"--- TRAVELER'S INQUIRY ---\n{request.message}"
+                     )
+                else:
+                    prompt_to_model = request.message
 
             response_text = client.generate(prompt_to_model)
 
@@ -239,6 +291,7 @@ class AIService:
 def generate_response(
     user_message: str,
     selected_tomes: Optional[list[str]] = None,
+    history: Optional[list[dict[str, str]]] = None,
     service: Optional[AIService] = None,
 ) -> AIResponse:
     """
@@ -251,6 +304,7 @@ def generate_response(
     return active_service.process_message(
         user_message=user_message,
         selected_tomes=selected_tomes,
+        history=history,
     )
 
 

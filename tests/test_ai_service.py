@@ -445,3 +445,105 @@ def test_delete_rulebook_ai_service():
     res_helper = delete_rulebook_file("custom_rules.pdf", service=service)
     assert res_helper is True
     mock_rag.delete_rulebook.assert_called_once_with("custom_rules.pdf")
+
+    
+def test_conversation_history_is_included_in_prompt():
+    """Verify that recent conversation history is passed into the model prompt."""
+    mock_client = MagicMock()
+    mock_client.model_name = "test_model"
+    mock_client.generate.return_value = "It uses an Athletics check."
+
+    mock_rag = MagicMock()
+    from src.schemas.responses import RuleCitation
+
+    mock_rag.get_indexed_tomes.return_value = ["PHB.pdf"]
+    mock_rag.retrieve_relevant_rules.return_value = [
+        RuleCitation(
+        source="PHB.pdf",
+        section="Combat > Grappling",
+        page=195,
+        text="Grappling involves an Athletics check.",
+        )
+    ]
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+
+    history = [
+        {
+            "user": "How does grappling work?",
+            "assistant": "It involves an Athletics check.",
+        }
+    ]
+
+    service.process_message(
+        "What about escaping?",
+        history=history,
+    )
+
+    prompt_sent = mock_client.generate.call_args.args[0]
+    assert "How does grappling work?" in prompt_sent
+    assert "It involves an Athletics check." in prompt_sent
+    assert "What about escaping?" in prompt_sent
+
+
+def test_conversation_history_is_included_without_rule_excerpts():
+    """Verify history is included when no rule excerpts are available."""
+    mock_client = MagicMock()
+    mock_client.model_name = "test_model"
+    mock_client.generate.return_value = "You can escape using an action."
+
+    mock_rag = MagicMock()
+    mock_rag.get_indexed_tomes.return_value = []
+    mock_rag.retrieve_relevant_rules.return_value = []
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+
+    history = [
+        {
+            "user": "How does grappling work?",
+            "assistant": "The target is grappled.",
+        }
+    ]
+
+    service.process_message(
+        "How do I escape?",
+        history=history,
+    )
+
+    assert mock_client.generate.called
+    prompt_sent = mock_client.generate.call_args.args[0]
+
+    assert "How does grappling work?" in prompt_sent
+    assert "The target is grappled." in prompt_sent
+    assert "How do I escape?" in prompt_sent
+
+
+
+def test_conversation_history_is_used_for_rag_retrieval():
+    """Verify prior user questions provide context to RAG retrieval."""
+    mock_client = MagicMock()
+    mock_client.model_name = "test_model"
+    mock_client.generate.return_value = "You can escape the grapple."
+
+    mock_rag = MagicMock()
+    mock_rag.get_indexed_tomes.return_value = []
+    mock_rag.retrieve_relevant_rules.return_value = []
+
+    service = AIService(model_client=mock_client, rag=mock_rag)
+
+    history = [
+        {
+            "user": "How does grappling work?",
+            "assistant": "The target is grappled.",
+        }
+    ]
+
+    service.process_message(
+        "What about escaping?",
+        history=history,
+    )
+
+    retrieval_query = mock_rag.retrieve_relevant_rules.call_args.args[0]
+
+    assert "How does grappling work?" in retrieval_query
+    assert "What about escaping?" in retrieval_query
