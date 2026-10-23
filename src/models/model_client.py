@@ -32,7 +32,8 @@ class OllamaModelClient:
         self.temperature = (
             temperature if temperature is not None else config.model_temperature
         )
-        self._client = ollama.Client(host=self.base_url)
+        # Timeout prevents a stalled generation from blocking the caller forever
+        self._client = ollama.Client(host=self.base_url, timeout=config.ollama_timeout)
 
     def generate(self, prompt: str, temperature: Optional[float] = None) -> str:
         """
