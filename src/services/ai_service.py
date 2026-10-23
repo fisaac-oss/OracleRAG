@@ -133,12 +133,29 @@ class AIService:
             history_context = "\n".join(history_blocks)
 
 
+            
             # 3. Retrieve relevant rulebook excerpts via RAG
             rag = self._get_rag()
+
+            retrieval_query = request.message
+            if history_context:
+                recent_user_messages = [
+                    turn["user"]
+                    for turn in (history or [])[-3:]
+                    if turn.get("user")
+                ]
+                if recent_user_messages:
+                    retrieval_query = (
+                        "\n".join(recent_user_messages)
+                        + "\n"
+                        + request.message
+                    )
+
             citations: list[RuleCitation] = rag.retrieve_relevant_rules(
-                request.message,
+                retrieval_query,
                 selected_tomes=request.selected_tomes,
             )
+
 
             indexed_tomes = rag.get_indexed_tomes()
 
