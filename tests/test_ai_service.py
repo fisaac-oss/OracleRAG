@@ -231,17 +231,110 @@ def test_rag_pipeline_retrieve_relevant_rules_filtering():
         where={"source": "Armor_Guide.pdf"},
     )
 
-    # 4. Multiple selected tomes -> should filter where={"source": {"$in": [...]}}
+    # 4. Multiple selected tomes -> should perform balanced retrieval per tome
     mock_collection.query.reset_mock()
     res_multi = pipeline.retrieve_relevant_rules(
         "What is heavy armor?", selected_tomes=["Armor_Guide.pdf", "PHB.pdf"]
     )
-    assert len(res_multi) == 1
-    mock_collection.query.assert_called_with(
-        query_texts=["What is heavy armor?"],
-        n_results=config.rag_top_k,
-        where={"source": {"$in": ["Armor_Guide.pdf", "PHB.pdf"]}},
+    assert len(res_multi) >= 1
+    assert mock_collection.query.call_count == 2
+    calls = mock_collection.query.call_args_list
+    assert calls[0].kwargs["where"] == {"source": "Armor_Guide.pdf"}
+    assert calls[1].kwargs["where"] == {"source": "PHB.pdf"}
+
+
+def test_rag_pipeline_balanced_multi_tome_allocation():
+    """Verify that RAGPipeline balances retrieval evenly across multiple tomes."""
+    from src.capabilities.rag import RAGPipeline
+
+    pipeline = RAGPipeline()
+    mock_collection = MagicMock()
+    mock_collection.count.return_value = 100
+
+    def fake_query(query_texts, n_results, where):
+        source = where.get("source") if where else None
+        if source == "TomeA.pdf":
+            return {
+                "documents": [["Doc A1", "Doc A2", "Doc A3", "Doc A4"]],
+                "metadatas": [[{"source": "TomeA.pdf", "section": "SecA", "page": 1}] * 4],
+                "distances": [[0.3, 0.4, 0.5, 0.6]],
+            }
+        elif source == "TomeB.pdf":
+            return {
+                "documents": [["Doc B1", "Doc B2", "Doc B3", "Doc B4"]],
+                "metadatas": [[{"source": "TomeB.pdf", "section": "SecB", "page": 2}] * 4],
+                "distances": [[0.35, 0.45, 0.55, 0.65]],
+            }
+        return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+    mock_collection.query.side_effect = fake_query
+    pipeline._collection = mock_collection
+
+    # 1. Even distribution test: top_k=6 across 2 tomes -> 3 from Tome A, 3 from Tome B
+    citations = pipeline.retrieve_relevant_rules(
+        "combat rules", n_results=6, selected_tomes=["TomeA.pdf", "TomeB.pdf"]
     )
+    assert len(citations) == 6
+    tome_a_cits = [c for c in citations if c.source == "TomeA.pdf"]
+    tome_b_cits = [c for c in citations if c.source == "TomeB.pdf"]
+    assert len(tome_a_cits) == 3
+    assert len(tome_b_cits) == 3
+
+    # 2. Uneven candidate availability: Tome A has 1 candidate, Tome B has 4
+    def fake_query_uneven(query_texts, n_results, where):
+        source = where.get("source") if where else None
+        if source == "TomeA.pdf":
+            return {
+                "documents": [["Doc A1"]],
+                "metadatas": [[{"source": "TomeA.pdf", "section": "SecA", "page": 1}]],
+                "distances": [[0.3]],
+            }
+        elif source == "TomeB.pdf":
+            return {
+                "documents": [["Doc B1", "Doc B2", "Doc B3", "Doc B4"]],
+                "metadatas": [[{"source": "TomeB.pdf", "section": "SecB", "page": 2}] * 4],
+                "distances": [[0.35, 0.45, 0.55, 0.65]],
+            }
+        return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+    mock_collection.query.side_effect = fake_query_uneven
+    citations_uneven = pipeline.retrieve_relevant_rules(
+        "combat rules", n_results=4, selected_tomes=["TomeA.pdf", "TomeB.pdf"]
+    )
+    assert len(citations_uneven) == 4
+    tome_a_cits_u = [c for c in citations_uneven if c.source == "TomeA.pdf"]
+    tome_b_cits_u = [c for c in citations_uneven if c.source == "TomeB.pdf"]
+    assert len(tome_a_cits_u) == 1
+    assert len(tome_b_cits_u) == 3
+
+    # 3. Relevance weighting when tomes exceed top_k (N > K):
+    # 4 tomes selected, top_k = 2. The 2 most relevant tomes should win the 2 slots.
+    def fake_query_many(query_texts, n_results, where):
+        source = where.get("source") if where else None
+        distances = {
+            "TomePoor1.pdf": 0.95,
+            "TomeBest.pdf": 0.15,
+            "TomeSecondBest.pdf": 0.40,
+            "TomePoor2.pdf": 1.10,
+        }
+        if source in distances:
+            dist = distances[source]
+            return {
+                "documents": [[f"Doc from {source}"]],
+                "metadatas": [[{"source": source, "section": "Sec", "page": 1}]],
+                "distances": [[dist]],
+            }
+        return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+    mock_collection.query.side_effect = fake_query_many
+    many_tomes = ["TomePoor1.pdf", "TomeBest.pdf", "TomeSecondBest.pdf", "TomePoor2.pdf"]
+    citations_weighted = pipeline.retrieve_relevant_rules(
+        "combat rules", n_results=2, selected_tomes=many_tomes
+    )
+    assert len(citations_weighted) == 2
+    # TomeBest (0.15) and TomeSecondBest (0.40) must be the ones chosen!
+    sources = [c.source for c in citations_weighted]
+    assert sources == ["TomeBest.pdf", "TomeSecondBest.pdf"]
 
 
 def test_process_message_with_selected_tomes():

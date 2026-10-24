@@ -278,6 +278,7 @@ class RAGPipeline:
         """
         Retrieves the most semantically relevant rule chunks for a given question.
         Optionally filters chunks by the specified list of selected tome/source names.
+        When multiple tomes are selected, performs balanced retrieval across each tome.
         """
         collection = self._get_collection()
         if collection.count() == 0:
@@ -290,47 +291,113 @@ class RAGPipeline:
         threshold = (
             max_distance if max_distance is not None else config.similarity_threshold
         )
-
-        where_filter = None
-        if selected_tomes is not None:
-            if len(selected_tomes) == 1:
-                where_filter = {"source": selected_tomes[0]}
-            else:
-                where_filter = {"source": {"$in": selected_tomes}}
-
         top_k = n_results if n_results is not None else config.rag_top_k
-        query_res = collection.query(
-            query_texts=[query],
-            n_results=min(top_k, collection.count()),
-            where=where_filter,
-        )
 
-        citations: list[RuleCitation] = []
-        if query_res and query_res.get("documents") and query_res["documents"][0]:
-            docs = query_res["documents"][0]
-            metas = (
-                query_res["metadatas"][0]
-                if query_res.get("metadatas")
-                else [{}] * len(docs)
-            )
-            distances = (
-                query_res["distances"][0]
-                if query_res.get("distances")
-                else [0.0] * len(docs)
+        # Case 1 & 2: No specific tome filter or single tome filter
+        if selected_tomes is None or len(selected_tomes) <= 1:
+            where_filter = None
+            if selected_tomes is not None and len(selected_tomes) == 1:
+                where_filter = {"source": selected_tomes[0]}
+
+            query_res = collection.query(
+                query_texts=[query],
+                n_results=min(top_k, collection.count()),
+                where=where_filter,
             )
 
-            for doc, meta, dist in zip(docs, metas, distances):
-                if dist <= threshold:
-                    citations.append(
-                        RuleCitation(
+            citations: list[RuleCitation] = []
+            if query_res and query_res.get("documents") and query_res["documents"][0]:
+                docs = query_res["documents"][0]
+                metas = (
+                    query_res["metadatas"][0]
+                    if query_res.get("metadatas")
+                    else [{}] * len(docs)
+                )
+                distances = (
+                    query_res["distances"][0]
+                    if query_res.get("distances")
+                    else [0.0] * len(docs)
+                )
+
+                for doc, meta, dist in zip(docs, metas, distances):
+                    if dist <= threshold:
+                        citations.append(
+                            RuleCitation(
+                                source=meta.get("source", "Unknown Tome"),
+                                section=meta.get("section", "General"),
+                                page=meta.get("page"),
+                                text=doc,
+                            )
+                        )
+            return citations
+
+        # Case 3: Multiple tomes selected -> Relevance-Weighted Balanced Retrieval
+        unique_tomes = list(dict.fromkeys(selected_tomes))
+        tome_candidates: dict[str, list[tuple[RuleCitation, float]]] = {}
+
+        for tome in unique_tomes:
+            tome_res = collection.query(
+                query_texts=[query],
+                n_results=min(top_k, collection.count()),
+                where={"source": tome},
+            )
+            candidates: list[tuple[RuleCitation, float]] = []
+            if tome_res and tome_res.get("documents") and tome_res["documents"][0]:
+                docs = tome_res["documents"][0]
+                metas = (
+                    tome_res["metadatas"][0]
+                    if tome_res.get("metadatas")
+                    else [{}] * len(docs)
+                )
+                distances = (
+                    tome_res["distances"][0]
+                    if tome_res.get("distances")
+                    else [0.0] * len(docs)
+                )
+
+                for doc, meta, dist in zip(docs, metas, distances):
+                    if dist <= threshold:
+                        citation = RuleCitation(
                             source=meta.get("source", "Unknown Tome"),
                             section=meta.get("section", "General"),
                             page=meta.get("page"),
                             text=doc,
                         )
-                    )
+                        candidates.append((citation, float(dist)))
+            tome_candidates[tome] = candidates
 
-        return citations
+        # Filter only tomes that have qualifying excerpts
+        active_tomes = [tome for tome in unique_tomes if tome_candidates[tome]]
+
+        # Relevance weighting: prioritize tomes whose best excerpt is closest in semantic distance
+        active_tomes.sort(key=lambda t: tome_candidates[t][0][1])
+
+        # Round-robin allocation prioritizing most relevant tomes when N > top_k
+        selected_by_tome: dict[str, list[RuleCitation]] = {
+            tome: [] for tome in active_tomes
+        }
+        total_selected = 0
+        changed = True
+
+        while total_selected < top_k and changed:
+            changed = False
+            for tome in active_tomes:
+                idx = len(selected_by_tome[tome])
+                if idx < len(tome_candidates[tome]):
+                    citation, _ = tome_candidates[tome][idx]
+                    selected_by_tome[tome].append(citation)
+                    total_selected += 1
+                    changed = True
+                    if total_selected >= top_k:
+                        break
+
+        # Group by tome so excerpts from the same scripture appear together for the arbiter,
+        # ordered from the most relevant rulebook to the least
+        balanced_citations: list[RuleCitation] = []
+        for tome in active_tomes:
+            balanced_citations.extend(selected_by_tome[tome])
+
+        return balanced_citations
 
     def get_indexed_tomes(self) -> list[str]:
         """Returns the list of unique book/document names currently indexed in ChromaDB."""
