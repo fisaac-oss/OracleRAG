@@ -271,7 +271,7 @@ class RAGPipeline:
     def retrieve_relevant_rules(
         self,
         query: str,
-        n_results: int = 4,
+        n_results: int | None = None,
         max_distance: float | None = None,
         selected_tomes: list[str] | None = None,
     ) -> list[RuleCitation]:
@@ -298,9 +298,10 @@ class RAGPipeline:
             else:
                 where_filter = {"source": {"$in": selected_tomes}}
 
+        top_k = n_results if n_results is not None else config.rag_top_k
         query_res = collection.query(
             query_texts=[query],
-            n_results=min(n_results, collection.count()),
+            n_results=min(top_k, collection.count()),
             where=where_filter,
         )
 

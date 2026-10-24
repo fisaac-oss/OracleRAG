@@ -23,6 +23,7 @@ class Config:
     )
     rag_collection_name: str = os.getenv("RAG_COLLECTION_NAME", "oracle_rules")
     similarity_threshold: float = float(os.getenv("SIMILARITY_THRESHOLD", "1.2"))
+    rag_top_k: int = int(os.getenv("RAG_TOP_K", "4"))
 
 
 # Instantiate global configuration object

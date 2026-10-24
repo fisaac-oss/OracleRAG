@@ -44,7 +44,8 @@ def evaluate_rpg_systems(input_path: Path = TEST_PATH, output_path: Path = TEST_
     total = len(cases)
     print(
         f"Configuration: model={config.model_name}, temp={config.model_temperature}, "
-        f"timeout={config.ollama_timeout}s, similarity_threshold={config.similarity_threshold}"
+        f"timeout={config.ollama_timeout}s, similarity_threshold={config.similarity_threshold}, "
+        f"rag_top_k={config.rag_top_k}"
     )
     print(f"Indexed tomes ({len(indexed_tomes)}): {indexed_tomes}")
     print(f"Starting evaluation of {total} test cases...\n" + "=" * 60)

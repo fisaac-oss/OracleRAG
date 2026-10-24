@@ -575,3 +575,23 @@ def test_model_client_system_prompt_handling():
             options={"temperature": config.model_temperature},
         )
 
+
+def test_rag_pipeline_uses_configured_top_k():
+    """Verify that RAGPipeline defaults to config.rag_top_k when n_results is omitted."""
+    from src.capabilities.rag import RAGPipeline
+    from unittest.mock import patch
+
+    with patch.object(RAGPipeline, "_get_collection") as mock_get_coll:
+        mock_coll = MagicMock()
+        mock_coll.count.return_value = 10
+        mock_coll.query.return_value = {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+        mock_get_coll.return_value = mock_coll
+
+        rag = RAGPipeline()
+        rag.retrieve_relevant_rules("test query")
+
+        mock_coll.query.assert_called_once()
+        _, kwargs = mock_coll.query.call_args
+        assert kwargs["n_results"] == config.rag_top_k
+
+

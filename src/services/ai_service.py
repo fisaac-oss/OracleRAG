@@ -13,6 +13,7 @@ from src.schemas.responses import (
     RuleCitation,
 )
 from src.capabilities.rag import get_rag_pipeline, RAGPipeline
+from src.config import config
 
 
 class AIService:
@@ -209,14 +210,22 @@ class AIService:
                     "Answer user questions strictly and impartially using only the provided rulebook excerpts.\n\n"
                     "RULES:\n"
                     "1. Grounding: Rely ONLY on the excerpts provided. Do not use outside knowledge, invent house rules, "
-                    "or assume rules from different systems or editions.\n"
-                    "2. Anti-Premise: Do not accept or validate false premises in the player's question. If the player asks "
-                    "about a mechanic, term, or edition that does NOT appear in the excerpts (e.g. asking about 'death saving throws' "
-                    "in Call of Cthulhu, or a different game edition), explicitly state that the consulted scripture contains no such rule "
-                    "or edition. NEVER invent, adapt, or rename rules to satisfy a mistaken premise.\n"
-                    "3. Specificity: Distinguish strictly between concrete mechanics (dice rolls, stats, actions) and thematic lore. "
+                    "or assume rules from different systems or editions. Do not mistake section headers or OCR artifacts (e.g. 'Prerequisite:...') for in-game feature names.\n"
+                    "2. Baseline vs. Optional Features: Always distinguish baseline combat actions (available to all characters) "
+                    "from optional exceptions like Feats, Spells, or Class Features. State the universal baseline rule first. "
+                    "Any excerpt with a 'Prerequisite:' represents an optional feat, NOT a universal rule. For example, the baseline 'grappled' condition "
+                    "ONLY reduces the target's speed to 0; attack advantage and pinning are NOT part of standard grappling. "
+                    "NEVER present benefits from feats, spells, or prerequisite-gated excerpts as default rules of a base action; "
+                    "if mentioned, explicitly label them as requiring an optional feat.\n"
+                    "3. Actor vs. Target Precision: Strictly distinguish who is affected by mechanics or penalties. "
+                    "Do not confuse an initiator's penalty (e.g. a grappler's halved dragging speed) with a target's condition (e.g. a grappled target's speed reduced to 0).\n"
+                    "4. Anti-Premise & Gates: Action prerequisites (such as size limits, reach, or conditions) are absolute gates. "
+                    "If a query asks about an invalid action (e.g. grappling a target two sizes larger) or assumes non-existent mechanics "
+                    "(e.g. death saving throws in Call of Cthulhu), state clearly that the action cannot be taken or the rule does not exist in the consulted scripture. "
+                    "Never invent resolution steps, auto-successes, or escape checks for invalid actions.\n"
+                    "5. Specificity: Distinguish strictly between concrete mechanics (dice rolls, stats, actions) and thematic lore. "
                     "Report only mechanics actually named in the passages. If an excerpt is partial, answer only what is supported.\n"
-                    "4. Style: Write naturally and concisely (1-4 paragraphs), like a seasoned Game Master. "
+                    "6. Style: Write naturally and concisely (1-4 paragraphs), like a seasoned Game Master. "
                     "State the rule answer directly without meta-framing (e.g. do not say 'Based on the excerpts')."
                 )
 
