@@ -27,6 +27,3 @@ data/chroma/
 
 # Agent skills
 .agents/skills/
-
-# Evaluation rounds results
-evaluation/evaluation_rounds
