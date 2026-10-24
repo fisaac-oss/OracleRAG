@@ -688,3 +688,61 @@ def test_rag_pipeline_uses_configured_top_k():
         assert kwargs["n_results"] == config.rag_top_k
 
 
+def test_rag_pipeline_bm25_rrf_reranking():
+    """Verify that BM25 RRF re-ranks vector candidates to boost exact keyword terminology matches."""
+    from src.capabilities.rag import RAGPipeline
+    from unittest.mock import patch
+
+    pipeline = RAGPipeline()
+    mock_coll = MagicMock()
+    mock_coll.count.return_value = 3
+
+    # Vector query returns Doc 1 first (lower distance), Doc 2 second
+    mock_coll.query.return_value = {
+        "documents": [[
+            "A character can take various general maneuvers during an encounter.",
+            "Cunning Action allows you to Dash, Disengage, or Hide as a bonus action.",
+        ]],
+        "metadatas": [[
+            {"source": "Core.pdf", "section": "Combat", "page": 10},
+            {"source": "Core.pdf", "section": "Rogue Features", "page": 20},
+        ]],
+        "distances": [[0.60, 0.75]],
+        "ids": [["doc_1", "doc_2"]],
+    }
+
+    # Document store contains corpus (N >= 3 ensures positive IDF in BM25Okapi)
+    mock_coll.get.return_value = {
+        "documents": [
+            "A character can take various general maneuvers during an encounter.",
+            "Cunning Action allows you to Dash, Disengage, or Hide as a bonus action.",
+            "Spellcasters prepare magical spells from their spellbooks each dawn.",
+        ],
+        "ids": ["doc_1", "doc_2", "doc_3"],
+    }
+
+    with patch.object(pipeline, "_get_collection", return_value=mock_coll):
+        # Specific keyword query targeting Cunning Action
+        results = pipeline.retrieve_relevant_rules("How does Cunning Action work?", selected_tomes=["Core.pdf"])
+        assert len(results) == 2
+        # Doc 2 should be boosted to rank 1 via BM25 RRF because of exact terminology match
+        assert results[0].section == "Rogue Features"
+        assert "Cunning Action" in results[0].text
+        assert results[1].section == "Combat"
+
+
+def test_rag_pipeline_bm25_cache_invalidation():
+    """Verify that deleting a rulebook clears the BM25 cache."""
+    from src.capabilities.rag import RAGPipeline
+
+    pipeline = RAGPipeline()
+    pipeline._bm25_cache["Core.pdf"] = ("mock_bm25", ["id1"])
+    mock_coll = MagicMock()
+    pipeline._collection = mock_coll
+
+    assert len(pipeline._bm25_cache) > 0
+    pipeline.delete_rulebook("Core.pdf")
+    assert len(pipeline._bm25_cache) == 0
+
+
+

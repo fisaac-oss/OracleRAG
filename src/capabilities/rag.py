@@ -8,14 +8,34 @@ This module handles:
 """
 
 import os
+import re
 import tempfile
 import threading
 from typing import BinaryIO, Any, Callable
 import chromadb
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
+try:
+    from rank_bm25 import BM25Okapi
+    _HAS_BM25 = True
+except ImportError:
+    _HAS_BM25 = False
+
 from src.config import config
 from src.schemas.responses import RuleCitation
+
+_STOPWORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "as", "at",
+    "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can", "did", "do",
+    "does", "doing", "don", "down", "during", "each", "few", "for", "from", "further", "had", "has", "have",
+    "having", "he", "her", "here", "hers", "herself", "him", "himself", "his", "how", "i", "if", "in", "into",
+    "is", "it", "its", "itself", "just", "me", "more", "most", "my", "myself", "no", "nor", "not", "now", "of",
+    "off", "on", "once", "only", "or", "other", "our", "ours", "ourselves", "out", "over", "own", "s", "same",
+    "she", "should", "so", "some", "such", "t", "than", "that", "the", "their", "theirs", "them", "themselves",
+    "then", "there", "these", "they", "this", "those", "through", "to", "too", "under", "until", "up", "very",
+    "was", "we", "were", "what", "when", "where", "which", "while", "who", "whom", "why", "will", "with", "you",
+    "your", "yours", "yourself", "yourselves"
+}
 
 
 class _OCRProgressWrapper:
@@ -63,6 +83,7 @@ class RAGPipeline:
         self._collection = None
         self._converter = None
         self._chunker = None
+        self._bm25_cache: dict[str, tuple[Any, list[str]]] = {}
 
     def _get_collection(self):
         """Lazy-initialize Chroma persistent storage and embedding function."""
@@ -75,6 +96,108 @@ class RAGPipeline:
                 embedding_function=self._embedding_function,
             )
         return self._collection
+
+    def _tokenize(self, text: str) -> list[str]:
+        """Tokenizes text into alphanumeric tokens, filtering stopwords and short terms."""
+        words = re.findall(r"\b[a-zA-Z0-9_]+\b", text.lower())
+        return [w for w in words if w not in _STOPWORDS and len(w) > 1]
+
+    def _get_or_build_bm25(
+        self, tome: str | None = None
+    ) -> tuple[Any, list[str]] | None:
+        """
+        Retrieves or constructs a BM25Okapi index for the specified tome (or all indexed tomes).
+        Returns a tuple of (BM25Okapi instance, list of document ids) or None if unavailable.
+        """
+        if not _HAS_BM25:
+            return None
+
+        cache_key = tome if tome is not None else "__ALL__"
+        if cache_key in self._bm25_cache:
+            return self._bm25_cache[cache_key]
+
+        try:
+            collection = self._get_collection()
+            if collection.count() == 0:
+                return None
+
+            kwargs: dict[str, Any] = {"include": ["documents"]}
+            if tome is not None:
+                kwargs["where"] = {"source": tome}
+
+            data = collection.get(**kwargs)
+            if not isinstance(data, dict) or not data.get("documents"):
+                return None
+
+            docs = data.get("documents", [])
+            ids = data.get("ids", [])
+            if not isinstance(docs, list) or not isinstance(ids, list) or len(docs) == 0:
+                return None
+
+            corpus = [self._tokenize(doc) for doc in docs if isinstance(doc, str)]
+            if not corpus or not any(len(c) > 0 for c in corpus):
+                return None
+
+            bm25 = BM25Okapi(corpus)
+            self._bm25_cache[cache_key] = (bm25, ids)
+            return self._bm25_cache[cache_key]
+        except Exception:
+            return None
+
+    def _rerank_candidates(
+        self,
+        query: str,
+        candidates: list[tuple[RuleCitation, float, str]],
+        tome: str | None = None,
+    ) -> list[tuple[RuleCitation, float]]:
+        """
+        Re-ranks vector candidates using Reciprocal Rank Fusion (RRF) with BM25.
+        Candidates must have already passed the similarity threshold gatekeeper.
+        RRF formula: RRF_score = 1/(60 + rank_vector) + 1/(60 + rank_bm25)
+        """
+        if not candidates:
+            return []
+
+        if not _HAS_BM25:
+            return [(c, d) for c, d, _ in candidates]
+
+        bm25_info = self._get_or_build_bm25(tome)
+        q_tokens = self._tokenize(query)
+
+        if not bm25_info or not q_tokens:
+            return [(c, d) for c, d, _ in candidates]
+
+        bm25, all_ids = bm25_info
+        if bm25 is None or not hasattr(bm25, "get_scores"):
+            return [(c, d) for c, d, _ in candidates]
+
+        try:
+            scores = bm25.get_scores(q_tokens)
+            # Map document IDs with positive BM25 scores to their BM25 ranks
+            scored_docs = [
+                (all_ids[idx], scores[idx])
+                for idx in range(len(scores))
+                if scores[idx] > 0
+            ]
+            scored_docs.sort(key=lambda x: x[1], reverse=True)
+            bm25_ranks = {doc_id: rank for rank, (doc_id, _) in enumerate(scored_docs, 1)}
+
+            fused: list[tuple[RuleCitation, float, float]] = []
+            for v_rank, (citation, dist, doc_id) in enumerate(candidates, 1):
+                v_score = 1.0 / (60.0 + v_rank)
+                bm25_score = (
+                    (1.0 / (60.0 + bm25_ranks[doc_id]))
+                    if doc_id in bm25_ranks
+                    else 0.0
+                )
+                rrf_score = v_score + bm25_score
+                fused.append((citation, dist, rrf_score))
+
+            # Sort by hybrid RRF score descending
+            fused.sort(key=lambda x: x[2], reverse=True)
+            return [(c, d) for c, d, _ in fused]
+        except Exception:
+            return [(c, d) for c, d, _ in candidates]
 
     @property
     def converter(self):
@@ -253,6 +376,7 @@ class RAGPipeline:
                 metadatas=metadatas,
                 ids=ids,
             )
+            self._bm25_cache.clear()
 
             if progress_callback:
                 progress_callback(
@@ -279,6 +403,8 @@ class RAGPipeline:
         Retrieves the most semantically relevant rule chunks for a given question.
         Optionally filters chunks by the specified list of selected tome/source names.
         When multiple tomes are selected, performs balanced retrieval across each tome.
+        Integrates BM25 lexical re-ranking via Reciprocal Rank Fusion (RRF) on top of
+        threshold-qualified vector candidates.
         """
         collection = self._get_collection()
         if collection.count() == 0:
@@ -296,8 +422,10 @@ class RAGPipeline:
         # Case 1 & 2: No specific tome filter or single tome filter
         if selected_tomes is None or len(selected_tomes) <= 1:
             where_filter = None
+            tome_name = None
             if selected_tomes is not None and len(selected_tomes) == 1:
-                where_filter = {"source": selected_tomes[0]}
+                tome_name = selected_tomes[0]
+                where_filter = {"source": tome_name}
 
             query_res = collection.query(
                 query_texts=[query],
@@ -305,7 +433,7 @@ class RAGPipeline:
                 where=where_filter,
             )
 
-            citations: list[RuleCitation] = []
+            raw_candidates: list[tuple[RuleCitation, float, str]] = []
             if query_res and query_res.get("documents") and query_res["documents"][0]:
                 docs = query_res["documents"][0]
                 metas = (
@@ -318,18 +446,29 @@ class RAGPipeline:
                     if query_res.get("distances")
                     else [0.0] * len(docs)
                 )
+                ids = (
+                    query_res["ids"][0]
+                    if query_res.get("ids")
+                    else [""] * len(docs)
+                )
 
-                for doc, meta, dist in zip(docs, metas, distances):
+                for doc, meta, dist, doc_id in zip(docs, metas, distances, ids):
                     if dist <= threshold:
-                        citations.append(
-                            RuleCitation(
-                                source=meta.get("source", "Unknown Tome"),
-                                section=meta.get("section", "General"),
-                                page=meta.get("page"),
-                                text=doc,
+                        raw_candidates.append(
+                            (
+                                RuleCitation(
+                                    source=meta.get("source", "Unknown Tome"),
+                                    section=meta.get("section", "General"),
+                                    page=meta.get("page"),
+                                    text=doc,
+                                ),
+                                float(dist),
+                                doc_id,
                             )
                         )
-            return citations
+
+            reranked = self._rerank_candidates(query, raw_candidates, tome=tome_name)
+            return [citation for citation, _ in reranked[:top_k]]
 
         # Case 3: Multiple tomes selected -> Relevance-Weighted Balanced Retrieval
         unique_tomes = list(dict.fromkeys(selected_tomes))
@@ -341,7 +480,7 @@ class RAGPipeline:
                 n_results=min(top_k, collection.count()),
                 where={"source": tome},
             )
-            candidates: list[tuple[RuleCitation, float]] = []
+            raw_candidates: list[tuple[RuleCitation, float, str]] = []
             if tome_res and tome_res.get("documents") and tome_res["documents"][0]:
                 docs = tome_res["documents"][0]
                 metas = (
@@ -354,8 +493,13 @@ class RAGPipeline:
                     if tome_res.get("distances")
                     else [0.0] * len(docs)
                 )
+                ids = (
+                    tome_res["ids"][0]
+                    if tome_res.get("ids")
+                    else [""] * len(docs)
+                )
 
-                for doc, meta, dist in zip(docs, metas, distances):
+                for doc, meta, dist, doc_id in zip(docs, metas, distances, ids):
                     if dist <= threshold:
                         citation = RuleCitation(
                             source=meta.get("source", "Unknown Tome"),
@@ -363,14 +507,17 @@ class RAGPipeline:
                             page=meta.get("page"),
                             text=doc,
                         )
-                        candidates.append((citation, float(dist)))
-            tome_candidates[tome] = candidates
+                        raw_candidates.append((citation, float(dist), doc_id))
+
+            tome_candidates[tome] = self._rerank_candidates(
+                query, raw_candidates, tome=tome
+            )
 
         # Filter only tomes that have qualifying excerpts
         active_tomes = [tome for tome in unique_tomes if tome_candidates[tome]]
 
         # Relevance weighting: prioritize tomes whose best excerpt is closest in semantic distance
-        active_tomes.sort(key=lambda t: tome_candidates[t][0][1])
+        active_tomes.sort(key=lambda t: min(dist for _, dist in tome_candidates[t]))
 
         # Round-robin allocation prioritizing most relevant tomes when N > top_k
         selected_by_tome: dict[str, list[RuleCitation]] = {
@@ -425,6 +572,7 @@ class RAGPipeline:
         try:
             collection = self._get_collection()
             collection.delete(where={"source": filename})
+            self._bm25_cache.clear()
             return True
         except Exception:
             return False
