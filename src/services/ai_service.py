@@ -196,7 +196,7 @@ class AIService:
             # 4. Construct grounded prompt if rulebook excerpts were found
             if citations:
                 context_blocks = "\n\n".join(
-                    f"[{i+1}] Tome: {c.source} | Section: {c.section} | Page: {c.page or 'N/A'}\n{c.text}"
+                    f"[{i+1}] Source: {c.source} | Section: {c.section} | Page: {c.page or 'N/A'}\n{c.text}"
                     for i, c in enumerate(citations)
                 )
                 history_section = (
@@ -226,7 +226,10 @@ class AIService:
                     "5. Specificity: Distinguish strictly between concrete mechanics (dice rolls, stats, actions) and thematic lore. "
                     "Report only mechanics actually named in the passages. If an excerpt is partial, answer only what is supported.\n"
                     "6. Style: Write naturally and concisely (1-4 paragraphs), like a seasoned Game Master. "
-                    "State the rule answer directly without meta-framing (e.g. do not say 'Based on the excerpts')."
+                    "State the rule answer directly without meta-framing (e.g. do not say 'Based on the excerpts').\n"
+                    "7. Multi-System Scope: When excerpts from multiple distinct sources or RPG systems (indicated by 'Source:') are present, "
+                    "you MUST explicitly address the rules for each system separately in your verdict (e.g. 'In D&D 5e... Whereas in Call of Cthulhu...'). "
+                    "Never blend mechanics across different systems, and do not answer solely for one system if excerpts from another are provided."
                 )
 
                 prompt_to_model = (
