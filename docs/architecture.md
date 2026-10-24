@@ -1,42 +1,53 @@
 # Architecture Documentation
 
-This document describes the baseline architectural layer of the application and provides guidance on extending it for your team project.
+This document describes the implemented architecture of Oracle RAG.
 
-## Baseline Architecture
+The application uses a native Python pipeline with Streamlit as its only UI
+runtime.
 
-The starter application follows a clean layered separation of concerns:
+## Implemented Architecture
 
 ```text
 User
   ↓
-Gradio UI (app/ui.py)
+Streamlit UI (app/ui.py)
   ↓
 Application / AI Service (src/services/ai_service.py)
-  ↓
-Model Client (src/models/model_client.py)
-  ↓
-Ollama (Local Inference Server)
-  ↓
-Local Model (e.g., llama3.2)
+  ├── ConversationMemory (src/capabilities/memory.py)
+  ├── RAGPipeline (src/capabilities/rag.py)
+  │     ├── Docling document conversion and semantic chunking
+  │     ├── ChromaDB persistent vector storage
+  │     └── BM25 lexical re-ranking with reciprocal rank fusion
+  └── OllamaModelClient (src/models/model_client.py)
+          ↓
+      Ollama (local inference server)
+          ↓
+      Configured local model (llama3.2:3b by default)
 ```
 
 ### Core Design Rules
 
-1. **Strict UI Isolation:** The Gradio user interface (`app/ui.py`) MUST NOT directly instantiate `OllamaModelClient` or make direct API calls to Ollama. It delegates all operations to `generate_response()` in `src/services/ai_service.py`.
-2. **Controlled Failure Handling:** The model client handles low-level runtime exceptions (e.g., connection errors or missing models). The service layer converts technical exceptions into structured, user-understandable responses.
-3. **Data Schemas:** Request inputs and response structures are validated using Pydantic models in `src/schemas/responses.py`.
+1. **Strict UI isolation:** The Streamlit UI delegates model, retrieval, ingestion, and deletion operations to `src/services/ai_service.py`. It does not call Ollama directly.
+2. **Service orchestration:** `AIService` validates requests, combines conversation history with retrieved rulebook context, and returns structured response schemas.
+3. **Hybrid retrieval:** `RAGPipeline` stores uploaded rulebook chunks in persistent ChromaDB and improves vector candidates with BM25 lexical re-ranking using reciprocal rank fusion.
+4. **Conversation state:** `ConversationMemory` keeps a bounded set of recent user/assistant turns per Streamlit chat session.
+5. **Controlled failures:** The model and service layers translate connection, model, retrieval, and validation failures into user-understandable structured responses.
+6. **Data schemas:** Request inputs and response structures are validated using Pydantic models in `src/schemas/responses.py`.
 
----
+## Local Runtime
 
-## Extension Points for Course Projects
+Create and activate the environment declared in [`environment.yml`](../environment.yml):
 
-As your project team designs and implements your additional AI capability, extend this baseline architecture. Potential capability extensions include:
+```bash
+conda env create -f environment.yml
+conda activate oracle_rag
+```
 
-- **RAG (Retrieval-Augmented Generation):** Insert document parsing, chunking, vector embeddings, and vector database retrieval into the service layer to ground model responses in domain documents.
-- **Tools & External APIs:** Integrate tool execution functions into the service layer allowing the model to query web services or local python utilities.
-- **Model Context Protocol (MCP):** Connect your service layer to standard MCP servers to access external tools and context providers.
-- **Agent Workflows:** Implement observation-action loops controlled by application code to handle dynamic multi-step tasks.
-- **Memory & Conversation State:** Store session history or persistent state across user interactions.
-- **Multimodal Models:** Update the model client and UI payload to pass image data to vision-enabled local models.
+Start the application from the project root:
 
-> **Instruction:** Replace or update the architecture diagram in this file as your team implements new components.
+```bash
+streamlit run app/main.py
+```
+
+The UI is available at `http://localhost:8501`. `app/main.py` is the
+Streamlit entry point and requires Streamlit's runtime.
