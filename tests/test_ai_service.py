@@ -209,7 +209,7 @@ def test_rag_pipeline_retrieve_relevant_rules_filtering():
     assert len(res_none) == 1
     mock_collection.query.assert_called_with(
         query_texts=["What is heavy armor?"],
-        n_results=4,
+        n_results=config.rag_top_k,
         where=None,
     )
 
@@ -227,7 +227,7 @@ def test_rag_pipeline_retrieve_relevant_rules_filtering():
     assert len(res_single) == 1
     mock_collection.query.assert_called_with(
         query_texts=["What is heavy armor?"],
-        n_results=4,
+        n_results=config.rag_top_k,
         where={"source": "Armor_Guide.pdf"},
     )
 
@@ -239,7 +239,7 @@ def test_rag_pipeline_retrieve_relevant_rules_filtering():
     assert len(res_multi) == 1
     mock_collection.query.assert_called_with(
         query_texts=["What is heavy armor?"],
-        n_results=4,
+        n_results=config.rag_top_k,
         where={"source": {"$in": ["Armor_Guide.pdf", "PHB.pdf"]}},
     )
 
